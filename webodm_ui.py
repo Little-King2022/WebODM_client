@@ -1402,9 +1402,16 @@ class WebODMClientUI:
                 update_progress(f"正在重启任务 {task_id} ({task_name})...\n")
                 
                 # 处理不同格式的选项
-                restart_options = options
-                if isinstance(options, dict):
-                    restart_options = [f"{key}={value}" for key, value in options.items()]
+                if isinstance(options, list):
+                    # 将列表格式的选项转换为字典
+                    restart_options = {}
+                    for option_str in options:
+                        if '=' in option_str:
+                            key, value = option_str.split('=', 1)
+                            restart_options[key] = value
+                else:
+                    # 已经是字典格式
+                    restart_options = options
                 
                 success = self.api.restart_task(self.current_project_id, task_id, restart_options)
                 
@@ -1985,7 +1992,14 @@ class WebODMClientUI:
             self.root.config(cursor="wait")
             
             def restart_thread():
-                success = self.api.restart_task(self.current_project_id, task_id, options)
+                # 将列表格式的选项转换为字典
+                restart_options = {}
+                for option_str in options:
+                    if '=' in option_str:
+                        key, value = option_str.split('=', 1)
+                        restart_options[key] = value
+                
+                success = self.api.restart_task(self.current_project_id, task_id, restart_options)
                 
                 if success:
                     self.root.after(0, lambda: self.status_var.set(f"任务 {task_id} 重启成功"))
