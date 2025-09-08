@@ -1,4 +1,5 @@
 # WebODM 客户端
+<img width="1252" height="940" alt="image" src="https://github.com/user-attachments/assets/bad42984-ae9c-4026-82b6-55766fb1b76e" />
 
 一个基于Python和Tkinter的[WebODM](https://github.com/OpenDroneMap/WebODM)客户端，用于批量管理WebODM中的项目和图片拼接任务。
 
@@ -32,7 +33,7 @@ pip install -r requirements.txt
 python main.py
 ```
 
-2. 在界面中输入WebODM服务器地址（默认为http://localhost:8000）
+2. 在界面中输入WebODM服务器地址 (默认为http://localhost:8000)
 3. 点击"登录"按钮，输入用户名和密码
 4. 登录成功后，可以查看和管理项目及任务
 
@@ -66,3 +67,10 @@ python main.py
 - 本客户端需要连接到运行中的WebODM服务器
 - 默认服务器地址为http://localhost:8000，可以在界面中修改
 - 下载大型资源文件可能需要较长时间，请确保有足够的磁盘空间
+
+## 应用截图
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/0a708b1e-7b04-4ab7-ae97-dc3725156c28" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/8eefda60-fde2-4dbd-b4b5-1542e44a78ef" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/8b1e8a7d-147a-4130-a4e7-485313af8f43" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/b037f80d-c215-43a3-9af5-7c74e8f9b23e" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/2da04c7a-2f57-43c1-b0d9-a6e12d81ae08" />

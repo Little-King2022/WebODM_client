@@ -1,4 +1,5 @@
 # WebODM Client
+<img width="1252" height="940" alt="image" src="https://github.com/user-attachments/assets/bad42984-ae9c-4026-82b6-55766fb1b76e" />
 
 A Python and Tkinter-based [WebODM](https://github.com/OpenDroneMap/WebODM) client for batch management of projects and image stitching tasks in WebODM.
 
@@ -70,3 +71,14 @@ The program creates a `.webodm_client` folder in the user's home directory to st
 - This client needs to connect to a running WebODM server
 - The default server address is http://localhost:8000, which can be modified in the interface
 - Downloading large asset files may take a long time, please ensure you have enough disk space
+
+## Snapshots
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/0a708b1e-7b04-4ab7-ae97-dc3725156c28" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/8eefda60-fde2-4dbd-b4b5-1542e44a78ef" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/8b1e8a7d-147a-4130-a4e7-485313af8f43" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/b037f80d-c215-43a3-9af5-7c74e8f9b23e" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/2da04c7a-2f57-43c1-b0d9-a6e12d81ae08" />
+
+
+
+
