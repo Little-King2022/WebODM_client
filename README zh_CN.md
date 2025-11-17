@@ -74,3 +74,5 @@ python main.py
 <img width="300" alt="image" src="https://github.com/user-attachments/assets/8b1e8a7d-147a-4130-a4e7-485313af8f43" />
 <img width="300" alt="image" src="https://github.com/user-attachments/assets/b037f80d-c215-43a3-9af5-7c74e8f9b23e" />
 <img width="300" alt="image" src="https://github.com/user-attachments/assets/2da04c7a-2f57-43c1-b0d9-a6e12d81ae08" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/e959ae15-2509-4169-b925-a1b308ccd179" />
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/1e335bb6-d52f-499d-9d22-b366cb6a29b4" />
