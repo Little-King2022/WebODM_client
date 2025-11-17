@@ -5,6 +5,7 @@ import json
 import threading
 from typing import Dict, List, Any, Optional, Callable, Union
 from PIL import Image, ImageTk
+import re
 
 from webodm_api import WebODMAPI
 from datetime import datetime
@@ -583,6 +584,27 @@ class WebODMClientUI:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
+        def _on_mousewheel_restart_single(event):
+            try:
+                canvas.yview_scroll(-int(event.delta/120), "units")
+            except Exception:
+                pass
+        canvas.bind("<MouseWheel>", _on_mousewheel_restart_single)
+        
+        def _on_mousewheel_restart_batch(event):
+            try:
+                canvas.yview_scroll(-int(event.delta/120), "units")
+            except Exception:
+                pass
+        canvas.bind("<MouseWheel>", _on_mousewheel_restart_batch)
+        
+        def _on_mousewheel_project(event):
+            try:
+                canvas.yview_scroll(-int(event.delta/120), "units")
+            except Exception:
+                pass
+        canvas.bind("<MouseWheel>", _on_mousewheel_project)
+        
         # 显示项目详情
         row = 0
         
@@ -765,11 +787,21 @@ class WebODMClientUI:
         
         # 如果任务已完成，添加下载按钮
         if task.get('status') == 40 and task.get('available_assets'):
-            ttk.Button(button_frame, text="下载资源", 
-                      command=lambda: self.download_task_assets(task['id'])).pack(side=tk.RIGHT, padx=5)
+            ttk.Button(
+                button_frame,
+                text="下载资源",
+                command=lambda: self.download_assets(task['id'])
+            ).pack(side=tk.RIGHT, padx=5)
     
     def create_new_task(self):
-        """创建新任务"""
+        """创建新任务
+        
+        Args:
+            无
+        
+        Returns:
+            无
+        """
         if not self.api.token:
             messagebox.showerror("错误", "请先登录")
             return
@@ -781,19 +813,29 @@ class WebODMClientUI:
         # 创建任务对话框
         task_dialog = tk.Toplevel(self.root)
         task_dialog.title("新建任务")
-        task_dialog.geometry("500x400")
+        task_dialog.geometry("600x700")
         task_dialog.transient(self.root)
         task_dialog.grab_set()
         
         # 创建框架
         main_frame = ttk.Frame(task_dialog, padding=10)
         main_frame.pack(fill=tk.BOTH, expand=True)
+        try:
+            main_frame.columnconfigure(0, weight=1)
+            main_frame.rowconfigure(5, weight=1)
+        except Exception:
+            pass
+        
+        # 任务名称
+        ttk.Label(main_frame, text="任务名称:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        self.task_name_var = tk.StringVar(value="")
+        ttk.Entry(main_frame, textvariable=self.task_name_var, width=30).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 图片选择
-        ttk.Label(main_frame, text="选择图片:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(main_frame, text="选择图片:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
         
         images_frame = ttk.Frame(main_frame)
-        images_frame.grid(row=1, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
+        images_frame.grid(row=2, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
         
         # 创建滚动条
         scrollbar = ttk.Scrollbar(images_frame)
@@ -809,38 +851,166 @@ class WebODMClientUI:
         
         # 按钮框架
         buttons_frame = ttk.Frame(main_frame)
-        buttons_frame.grid(row=2, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
+        buttons_frame.grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
         
         ttk.Button(buttons_frame, text="添加图片", command=self.add_images).pack(side=tk.LEFT, padx=2)
         ttk.Button(buttons_frame, text="移除选中", command=self.remove_selected_images).pack(side=tk.LEFT, padx=2)
         ttk.Button(buttons_frame, text="清空列表", command=self.clear_images).pack(side=tk.LEFT, padx=2)
         
         # 处理选项
-        ttk.Label(main_frame, text="处理选项:", font=("TkDefaultFont", 10, "bold")).grid(row=3, column=0, sticky=tk.W, padx=5, pady=10)
+        ttk.Label(main_frame, text="处理选项:", font=("TkDefaultFont", 10, "bold")).grid(row=4, column=0, sticky=tk.W, padx=5, pady=10)
         
-        options_frame = ttk.Frame(main_frame)
-        options_frame.grid(row=4, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
+        options_container = ttk.Frame(main_frame)
+        options_container.grid(row=5, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
         
-        # 常用选项
-        row = 0
+        canvas = tk.Canvas(options_container)
+        scrollbar = ttk.Scrollbar(options_container, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
         
-        # 正射影像分辨率
-        ttk.Label(options_frame, text="正射影像分辨率 (cm/pixel):").grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
-        orthophoto_resolution_var = tk.StringVar(value="5")
-        ttk.Entry(options_frame, textvariable=orthophoto_resolution_var, width=10).grid(row=row, column=1, sticky=tk.W, padx=5, pady=2)
-        row += 1
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+        )
         
-        # 点云密度
-        ttk.Label(options_frame, text="点云密度 (1=低, 2=中, 3=高, 4=超高):").grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
-        pc_quality_var = tk.StringVar(value="2")
-        ttk.Combobox(options_frame, textvariable=pc_quality_var, values=["1", "2", "3", "4"], width=10).grid(row=row, column=1, sticky=tk.W, padx=5, pady=2)
-        row += 1
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
         
-        # 网格质量
-        ttk.Label(options_frame, text="网格质量 (1=低, 2=中, 3=高, 4=超高):").grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
-        mesh_quality_var = tk.StringVar(value="2")
-        ttk.Combobox(options_frame, textvariable=mesh_quality_var, values=["1", "2", "3", "4"], width=10).grid(row=row, column=1, sticky=tk.W, padx=5, pady=2)
-        row += 1
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+        
+        def _on_mousewheel_options(event):
+            try:
+                canvas.yview_scroll(-int(event.delta/120), "units")
+            except Exception:
+                pass
+        canvas.bind("<MouseWheel>", _on_mousewheel_options)
+        
+        self.status_var.set("正在获取处理选项...")
+        processing_node_options = self.api.get_processing_node_options()
+        processing_options = {}
+        if processing_node_options:
+            for option in processing_node_options:
+                option_name = option.get('name')
+                if not option_name:
+                    continue
+                option_type = option.get('type')
+                option_value = option.get('value')
+                option_domain = option.get('domain')
+                option_help = option.get('help', '')
+                widget_type = "string"
+                default_value = option_value
+                options_list = []
+                if option_type == "bool":
+                    widget_type = "bool"
+                    default_value = option_value.lower() == "true" if isinstance(option_value, str) else bool(option_value)
+                elif option_type == "int":
+                    widget_type = "int"
+                    try:
+                        default_value = int(option_value) if option_value else 0
+                    except (ValueError, TypeError):
+                        default_value = 0
+                elif option_type == "float" or option_type == "percent":
+                    widget_type = "float"
+                    try:
+                        default_value = float(option_value) if option_value else 0.0
+                    except (ValueError, TypeError):
+                        default_value = 0.0
+                elif option_type == "enum" and isinstance(option_domain, list):
+                    widget_type = "select"
+                    options_list = option_domain
+                    default_value = option_value if option_value in option_domain else (option_domain[0] if option_domain else "")
+                processing_options[option_name] = {
+                    "label": option_name,
+                    "type": widget_type,
+                    "default": default_value,
+                    "options": options_list,
+                    "help": option_help
+                }
+        else:
+            processing_options = {
+                "mesh-octree-depth": {"label": "网格八叉树深度", "type": "int", "default": 11},
+                "mesh-size": {"label": "网格大小", "type": "int", "default": 200000},
+                "min-num-features": {"label": "最小特征数", "type": "int", "default": 8000},
+                "orthophoto-resolution": {"label": "正射影像分辨率", "type": "float", "default": 2},
+                "pc-quality": {"label": "点云质量", "type": "select", "default": "medium", "options": ["ultra", "high", "medium", "low", "lowest"]},
+                "pc-filter": {"label": "点云过滤", "type": "int", "default": 2},
+                "dsm": {"label": "生成DSM", "type": "bool", "default": True},
+                "dtm": {"label": "生成DTM", "type": "bool", "default": False},
+                "cog": {"label": "生成COG格式", "type": "bool", "default": False},
+                "dem-resolution": {"label": "DEM分辨率", "type": "float", "default": 2},
+                "feature-quality": {"label": "特征质量", "type": "select", "default": "medium", "options": ["ultra", "high", "medium", "low", "lowest"]},
+                "use-3dmesh": {"label": "使用3D网格", "type": "bool", "default": False},
+            }
+        self.status_var.set("就绪")
+        
+        categories = {
+            "基本设置": ["end-with", "rerun-from", "min-num-features", "feature-type", "feature-quality", "matcher-type"],
+            "点云设置": ["pc-quality", "pc-filter", "pc-classify", "pc-rectify", "pc-geometric"],
+            "网格设置": ["mesh-size", "mesh-octree-depth", "mesh-samples", "mesh-point-weight", "use-3dmesh"],
+            "正射影像设置": ["orthophoto-resolution", "orthophoto-no-tiled", "orthophoto-png", "orthophoto-compression", "cog"],
+            "DEM设置": ["dem-resolution", "dem-gapfill-steps", "dsm", "dtm", "dem-euclidean-map"],
+            "相机设置": ["use-fixed-camera-params", "cameras", "camera-lens", "radiometric-calibration"],
+            "其他设置": []
+        }
+        
+        tab_control = ttk.Notebook(scrollable_frame)
+        tab_control.pack(fill=tk.BOTH, expand=True, pady=10)
+        
+        all_options = {}
+        for key, option in processing_options.items():
+            all_options[key] = option
+        
+        tabs = {}
+        for category, option_keys in categories.items():
+            tab = ttk.Frame(tab_control)
+            tabs[category] = tab
+            tab_control.add(tab, text=category)
+        
+        for key in all_options.keys():
+            found = False
+            for category, option_keys in categories.items():
+                if key in option_keys:
+                    found = True
+                    break
+            if not found:
+                categories["其他设置"].append(key)
+        
+        option_vars = {}
+        for category, option_keys in categories.items():
+            tab = tabs[category]
+            if not option_keys:
+                ttk.Label(tab, text="没有可用的选项").pack(pady=20)
+                continue
+            for key in option_keys:
+                if key not in all_options:
+                    continue
+                option = all_options[key]
+                option_frame = ttk.Frame(tab)
+                option_frame.pack(fill=tk.X, pady=5, padx=10)
+                label_frame = ttk.Frame(option_frame)
+                label_frame.pack(fill=tk.X, side=tk.TOP)
+                option_label = option.get("label", key)
+                ttk.Label(label_frame, text=f"{option_label}").pack(side=tk.LEFT, anchor="w")
+                control_frame = ttk.Frame(option_frame)
+                control_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 0))
+                if option["type"] == "bool":
+                    var = tk.BooleanVar(value=option["default"])
+                    ttk.Checkbutton(control_frame, variable=var).pack(side=tk.LEFT)
+                elif option["type"] == "select":
+                    var = tk.StringVar(value=option["default"])
+                    ttk.Combobox(control_frame, textvariable=var, values=option["options"], state="readonly", width=30).pack(side=tk.LEFT)
+                else:
+                    var = tk.StringVar(value=str(option["default"]))
+                    ttk.Entry(control_frame, textvariable=var, width=30).pack(side=tk.LEFT)
+                if "help" in option and option["help"]:
+                    help_frame = ttk.Frame(option_frame)
+                    help_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 5))
+                    help_text = option["help"].replace("%(default)s", str(option["default"]))
+                    if "options" in option and option["options"]:
+                        help_text = help_text.replace("%(choices)s", ", ".join(option["options"]))
+                    ttk.Label(help_frame, text=help_text, wraplength=500, foreground="gray").pack(side=tk.LEFT, anchor="w")
+                ttk.Separator(option_frame, orient="horizontal").pack(fill=tk.X, pady=(5, 0))
+                option_vars[key] = var
         
         # 创建任务按钮
         button_frame = ttk.Frame(task_dialog)
@@ -851,22 +1021,101 @@ class WebODMClientUI:
                 messagebox.showerror("错误", "请至少添加一张图片")
                 return
             
-            # 收集处理选项
-            options = {
-                "orthophoto-resolution": float(orthophoto_resolution_var.get()),
-                "pc-quality": int(pc_quality_var.get()),
-                "mesh-quality": int(mesh_quality_var.get())
-            }
+            options = {}
+            for key, var in option_vars.items():
+                option_info = processing_options.get(key, {})
+                opt_type = option_info.get("type", "string")
+                raw_value = var.get()
+                try:
+                    if opt_type == "bool":
+                        options[key] = self._parse_bool_value(raw_value)
+                    elif opt_type == "int":
+                        value_str = str(raw_value).strip()
+                        options[key] = int(value_str)
+                    elif opt_type == "float":
+                        value_str = str(raw_value).strip()
+                        options[key] = float(value_str)
+                    else:
+                        options[key] = str(raw_value).strip()
+                except ValueError:
+                    label = option_info.get("label", key)
+                    if opt_type == "bool":
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的布尔值")
+                    else:
+                        error_type = "整数" if opt_type == "int" else "浮点数"
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的{error_type}")
+                    return
+            
+            options = self._clean_option_values(options)
             
             self.status_var.set("正在创建任务...")
             task_dialog.config(cursor="wait")
             self.root.config(cursor="wait")
+
+            upload_dialog = tk.Toplevel(task_dialog)
+            upload_dialog.title("上传进度")
+            upload_dialog.geometry("400x200")
+            upload_dialog.transient(task_dialog)
+            upload_dialog.grab_set()
+            upload_dialog.resizable(False, False)
+            upload_dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+            
+            upload_status_var = tk.StringVar(value="正在准备上传...")
+            ttk.Label(upload_dialog, textvariable=upload_status_var).pack(pady=(20, 10))
+            
+            total_images = max(len(self.image_paths), 1)
+            upload_progress_var = tk.DoubleVar(value=0)
+            upload_progress = ttk.Progressbar(
+                upload_dialog,
+                orient="horizontal",
+                length=320,
+                mode="determinate",
+                maximum=total_images,
+                variable=upload_progress_var
+            )
+            upload_progress.pack(pady=5, padx=20, fill=tk.X)
+            
+            upload_count_var = tk.StringVar(value=f"0/{len(self.image_paths)}")
+            ttk.Label(upload_dialog, textvariable=upload_count_var).pack(pady=(0, 10))
+            
+            def update_upload_progress(completed: int, total: int, message: str):
+                def _update():
+                    if not upload_dialog.winfo_exists():
+                        return
+                    maximum = max(total, 1)
+                    upload_progress.config(maximum=maximum)
+                    upload_progress_var.set(min(completed, maximum))
+                    if total > 0:
+                        upload_count_var.set(f"{min(completed, total)}/{total}")
+                    else:
+                        upload_count_var.set("")
+                    upload_status_var.set(message)
+                self.root.after(0, _update)
             
             def create_thread():
-                task = self.api.create_task(self.current_project_id, self.image_paths, options)
-                
-                # 在主线程中更新UI
-                self.root.after(0, lambda: self.after_create_task(task, task_dialog))
+                task_name = self.task_name_var.get().strip()
+                task = None
+                try:
+                    task = self.api.create_task(
+                        self.current_project_id,
+                        self.image_paths,
+                        options,
+                        name=task_name if task_name else None,
+                        progress_callback=update_upload_progress
+                    )
+                except Exception as exc:
+                    print(f"创建任务过程中发生错误: {exc}")
+                    task = None
+                finally:
+                    def finish():
+                        if upload_dialog.winfo_exists():
+                            try:
+                                upload_dialog.grab_release()
+                            except Exception:
+                                pass
+                            upload_dialog.destroy()
+                        self.after_create_task(task, task_dialog)
+                    self.root.after(0, finish)
             
             threading.Thread(target=create_thread).start()
         
@@ -891,6 +1140,15 @@ class WebODMClientUI:
             if filename not in self.image_paths:
                 self.image_paths.append(filename)
                 self.images_listbox.insert(tk.END, os.path.basename(filename))
+        
+        try:
+            if hasattr(self, 'task_name_var') and self.task_name_var.get().strip() == "":
+                first_file = filenames[0]
+                folder_name = os.path.basename(os.path.dirname(first_file))
+                if folder_name:
+                    self.task_name_var.set(folder_name)
+        except Exception:
+            pass
     
     def remove_selected_images(self):
         """移除选中的图片"""
@@ -928,8 +1186,8 @@ class WebODMClientUI:
             self.status_var.set("任务创建失败")
             messagebox.showerror("创建失败", "无法创建任务，请检查图片文件和网络连接")
     
-    def download_assets(self):
-        """下载选中任务的资源"""
+    def download_assets(self, task_ids: Optional[Union[int, str, List[Union[int, str]]]] = None):
+        """下载任务资源，支持单个任务或批量任务"""
         if not self.api.token:
             messagebox.showerror("错误", "请先登录")
             return
@@ -938,57 +1196,90 @@ class WebODMClientUI:
             messagebox.showerror("错误", "请先选择一个项目")
             return
         
-        # 获取选中的任务
-        selection = self.tasks_treeview.selection()
-        if not selection:
+        # 统一构建任务ID列表
+        if task_ids is None:
+            selection = self.tasks_treeview.selection()
+            if not selection:
+                messagebox.showerror("错误", "请先选择至少一个任务")
+                return
+            collected_ids = [str(self.tasks_treeview.item(item, "values")[0]) for item in selection]
+        else:
+            if isinstance(task_ids, (int, str)):
+                collected_ids = [str(task_ids)]
+            else:
+                collected_ids = [str(tid) for tid in task_ids if tid is not None]
+        
+        # 去重并保持顺序
+        normalized_ids: List[str] = []
+        seen_ids = set()
+        for task_id in collected_ids:
+            if task_id not in seen_ids:
+                normalized_ids.append(task_id)
+                seen_ids.add(task_id)
+        
+        if not normalized_ids:
             messagebox.showerror("错误", "请先选择至少一个任务")
             return
         
-        # 获取任务ID列表
-        task_ids = []
-        for item in selection:
-            task_id = self.tasks_treeview.item(item, "values")[0]
-            task_ids.append(task_id)  # 不转换为整数，保留原始ID格式
+        task_info_cache: Dict[str, Dict[str, Any]] = {}
+        single_task_mode = len(normalized_ids) == 1
+        
+        # 构建资源列表
+        if single_task_mode:
+            single_task_id = normalized_ids[0]
+            task_info = self.api.get_task(self.current_project_id, single_task_id)
+            if not task_info:
+                messagebox.showerror("错误", f"无法获取任务 {single_task_id} 的信息")
+                return
+            available_assets = task_info.get('available_assets', [])
+            if not available_assets:
+                messagebox.showerror("错误", f"任务 {task_info.get('name', f'任务_{single_task_id}')} 没有可用的资源")
+                return
+            asset_choices = available_assets
+            default_selected = set(asset_choices)
+            dialog_title = f"选择要下载的资源 - {task_info.get('name', '未命名')}"
+            task_info_cache[single_task_id] = task_info
+        else:
+            asset_choices = [
+                "all.zip",
+                "orthophoto.tif",
+                "dsm.tif",
+                "dtm.tif",
+                "georeferenced_model.laz",
+                "cameras.json",
+                "shots.geojson",
+                "report.pdf"
+            ]
+            default_selected = {"orthophoto.tif", "dsm.tif"}
+            dialog_title = "选择要下载的资源"
         
         # 选择下载目录
         download_dir = filedialog.askdirectory(title="选择下载目录")
         if not download_dir:
             return
         
-        # 选择要下载的资源类型
-        asset_types = [
-            "all.zip",
-            "orthophoto.tif",
-            "dsm.tif",
-            "dtm.tif",
-            "georeferenced_model.laz",
-            "cameras.json",
-            "shots.geojson",
-            "report.pdf"
-        ]
+        download_dir = download_dir.strip()
+        if not download_dir:
+            messagebox.showerror("错误", "请选择有效的下载目录")
+            return
+        base_download_dir = os.path.normpath(download_dir)
         
         # 创建资源选择对话框
         asset_dialog = tk.Toplevel(self.root)
-        asset_dialog.title("选择要下载的资源")
-        asset_dialog.geometry("300x300")
+        asset_dialog.title(dialog_title)
+        asset_dialog.geometry("300x350")
         asset_dialog.transient(self.root)
         asset_dialog.grab_set()
         
         ttk.Label(asset_dialog, text="选择要下载的资源类型:").pack(pady=(10, 5))
         
-        # 创建复选框
-        asset_vars = {}
-        for asset in asset_types:
-            # 默认选中ortho和dsm
-            if asset == asset_types[1] or asset == asset_types[2]:
-                var = tk.BooleanVar(value=True)
-            else:
-                var = tk.BooleanVar(value=False)
+        asset_vars: Dict[str, tk.BooleanVar] = {}
+        for asset in asset_choices:
+            var = tk.BooleanVar(value=asset in default_selected)
             asset_vars[asset] = var
             ttk.Checkbutton(asset_dialog, text=asset, variable=var).pack(anchor=tk.W, padx=20, pady=2)
         
         def do_download():
-            # 获取选中的资源类型
             selected_assets = [asset for asset, var in asset_vars.items() if var.get()]
             if not selected_assets:
                 messagebox.showerror("错误", "请至少选择一种资源类型")
@@ -996,102 +1287,133 @@ class WebODMClientUI:
             
             asset_dialog.destroy()
             
-            # 开始下载
-            self.start_download_assets(task_ids, selected_assets, download_dir)
-        
-        ttk.Button(asset_dialog, text="下载", command=do_download).pack(pady=10)
-    
-    def start_download_assets(self, task_ids: List[int], assets: List[str], download_dir: str):
-        """开始下载资源
-        
-        Args:
-            task_ids: 任务ID列表
-            assets: 资源类型列表
-            download_dir: 下载目录
-        """
-        self.status_var.set("正在准备下载...")
-        self.root.config(cursor="wait")
-        
-        # 创建进度对话框
-        progress_dialog = tk.Toplevel(self.root)
-        progress_dialog.title("下载进度")
-        progress_dialog.geometry("400x300")
-        progress_dialog.transient(self.root)
-        
-        # 创建进度文本框
-        progress_frame = ttk.Frame(progress_dialog, padding=10)
-        progress_frame.pack(fill=tk.BOTH, expand=True)
-        
-        progress_text = tk.Text(progress_frame, height=15, width=50)
-        progress_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        
-        scrollbar = ttk.Scrollbar(progress_frame, command=progress_text.yview)
-        scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        progress_text.config(yscrollcommand=scrollbar.set)
-        
-        # 添加取消按钮
-        cancel_button = ttk.Button(progress_dialog, text="取消", state=tk.DISABLED)
-        cancel_button.pack(pady=10)
-        
-        # 下载线程
-        def download_thread():
-            total_downloads = len(task_ids) * len(assets)
-            completed_downloads = 0
-            failed_downloads = 0
+            self.status_var.set("正在准备下载...")
+            self.root.config(cursor="wait")
             
-            for task_id in task_ids:
-                # 获取任务信息
-                task_info = self.api.get_task(self.current_project_id, task_id)
-                if not task_info:
-                    update_progress(f"无法获取任务 {task_id} 的信息\n")
-                    continue
+            progress_dialog = tk.Toplevel(self.root)
+            progress_dialog.title("下载进度")
+            progress_dialog.geometry("400x300")
+            progress_dialog.transient(self.root)
+            
+            progress_frame = ttk.Frame(progress_dialog, padding=10)
+            progress_frame.pack(fill=tk.BOTH, expand=True)
+            
+            progress_text = tk.Text(progress_frame, height=15, width=50)
+            progress_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+            
+            scrollbar = ttk.Scrollbar(progress_frame, command=progress_text.yview)
+            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
+            progress_text.config(yscrollcommand=scrollbar.set)
+            
+            close_button = ttk.Button(progress_dialog, text="关闭", state=tk.DISABLED)
+            close_button.pack(pady=10)
+            
+            def update_progress(text: str):
+                self.root.after(0, lambda: progress_text.insert(tk.END, text))
+                self.root.after(0, lambda: progress_text.see(tk.END))
+            
+            def update_progress_title(completed: int, total: int):
+                self.root.after(0, lambda: progress_dialog.title(f"下载进度 ({completed}/{total})"))
+            
+            def download_thread():
+                total_downloads = len(normalized_ids) * len(selected_assets)
+                completed_downloads = 0
+                failed_downloads = 0
                 
-                task_name = task_info.get('name', f"任务_{task_id}")
-                available_assets = task_info.get('available_assets', [])
-                
-                # 创建任务目录
-                task_dir = os.path.join(download_dir, f"{task_name}_{task_id}")
-                os.makedirs(task_dir, exist_ok=True)
-                
-                for asset in assets:
-                    if asset not in available_assets:
-                        update_progress(f"任务 {task_id} ({task_name}) 没有资源: {asset}\n")
-                        failed_downloads += 1
-                        completed_downloads += 1
+                for task_id in normalized_ids:
+                    # 复用已获取的任务信息
+                    task_info = task_info_cache.get(task_id)
+                    if not task_info:
+                        task_info = self.api.get_task(self.current_project_id, task_id)
+                        if task_info:
+                            task_info_cache[task_id] = task_info
+                    
+                    if not task_info:
+                        update_progress(f"无法获取任务 {task_id} 的信息\n")
+                        continue
+                    
+                    task_name = task_info.get('name', f"任务_{task_id}")
+                    available_assets = task_info.get('available_assets', [])
+                    
+                    safe_task_dir = os.path.join(
+                        base_download_dir,
+                        f"{self._sanitize_filename(task_name)}_{self._sanitize_filename(str(task_id))}"
+                    )
+                    
+                    try:
+                        os.makedirs(safe_task_dir, exist_ok=True)
+                    except OSError as exc:
+                        update_progress(f"无法创建目录 {safe_task_dir}: {exc}\n")
+                        failed_downloads += len(selected_assets)
+                        completed_downloads += len(selected_assets)
                         update_progress_title(completed_downloads, total_downloads)
                         continue
                     
-                    update_progress(f"正在下载任务 {task_id} ({task_name}) 的资源: {asset}\n")
-                    
-                    output_path = os.path.join(task_dir, asset)
-                    success = self.api.download_asset(self.current_project_id, task_id, asset, output_path)
-                    
-                    if success:
-                        update_progress(f"成功下载: {output_path}\n")
-                    else:
-                        update_progress(f"下载失败: {asset}\n")
-                        failed_downloads += 1
-                    
-                    completed_downloads += 1
-                    update_progress_title(completed_downloads, total_downloads)
+                    for asset in selected_assets:
+                        if asset not in available_assets:
+                            update_progress(f"任务 {task_id} ({task_name}) 没有资源: {asset}\n")
+                            failed_downloads += 1
+                            completed_downloads += 1
+                            update_progress_title(completed_downloads, total_downloads)
+                            continue
+                        
+                        update_progress(f"正在下载任务 {task_id} ({task_name}) 的资源: {asset}\n")
+                        
+                        safe_asset_name = self._sanitize_filename(asset)
+                        output_path = os.path.join(safe_task_dir, safe_asset_name)
+                        success = self.api.download_asset(self.current_project_id, task_id, asset, output_path)
+                        
+                        if success:
+                            update_progress(f"成功下载: {output_path}\n")
+                        else:
+                            update_progress(f"下载失败: {asset}\n")
+                            failed_downloads += 1
+                        
+                        completed_downloads += 1
+                        update_progress_title(completed_downloads, total_downloads)
+                
+                update_progress(f"\n下载完成! 总计: {total_downloads}, 成功: {total_downloads - failed_downloads}, 失败: {failed_downloads}\n")
+                self.root.after(0, lambda: self.root.config(cursor=""))
+                self.root.after(0, lambda: self.status_var.set("下载完成"))
+                self.root.after(0, lambda: close_button.config(state=tk.NORMAL, command=progress_dialog.destroy))
             
-            # 完成下载
-            update_progress(f"\n下载完成! 总计: {total_downloads}, 成功: {completed_downloads - failed_downloads}, 失败: {failed_downloads}\n")
-            self.root.after(0, lambda: self.root.config(cursor=""))
-            self.root.after(0, lambda: self.status_var.set("下载完成"))
-            self.root.after(0, lambda: cancel_button.config(text="关闭", state=tk.NORMAL, command=progress_dialog.destroy))
+            threading.Thread(target=download_thread).start()
         
-        # 更新进度文本
-        def update_progress(text):
-            self.root.after(0, lambda: progress_text.insert(tk.END, text))
-            self.root.after(0, lambda: progress_text.see(tk.END))
-        
-        # 更新进度对话框标题
-        def update_progress_title(completed, total):
-            self.root.after(0, lambda: progress_dialog.title(f"下载进度 ({completed}/{total})"))
-        
-        # 启动下载线程
-        threading.Thread(target=download_thread).start()
+        ttk.Button(asset_dialog, text="下载", command=do_download).pack(pady=10)
+    
+    def _sanitize_filename(self, name: str) -> str:
+        """清理Windows路径非法字符，保证生成的文件名安全"""
+        safe = re.sub(r'[<>:"/\\|?*]', '_', str(name))
+        safe = safe.strip().strip('.')
+        if not safe:
+            safe = "task"
+        return safe[:150]
+
+    def _parse_bool_value(self, value: Any) -> bool:
+        """将多种布尔表示转换为bool类型"""
+        if isinstance(value, bool):
+            return value
+        value_str = str(value).strip().lower()
+        if value_str in {"1", "true", "yes", "on"}:
+            return True
+        if value_str in {"0", "false", "no", "off", ""}:
+            return False
+        raise ValueError("布尔值格式无效")
+
+    def _clean_option_values(self, options: Dict[str, Any]) -> Dict[str, Any]:
+        """移除空字符串和None值，避免发送无效的处理选项"""
+        cleaned: Dict[str, Any] = {}
+        for key, value in options.items():
+            if value is None:
+                continue
+            if isinstance(value, str):
+                trimmed = value.strip()
+                if not trimmed:
+                    continue
+                cleaned[key] = trimmed
+            else:
+                cleaned[key] = value
+        return cleaned
     
     def restart_tasks(self):
         """重启选中的任务"""
@@ -1337,10 +1659,31 @@ class WebODMClientUI:
             # 收集选项
             options = {}
             for key, var in option_vars.items():
-                if processing_options[key]["type"] == "bool":
-                    options[key] = str(var.get()).lower()
-                else:
-                    options[key] = var.get()
+                option_info = processing_options.get(key, {})
+                opt_type = option_info.get("type", "string")
+                raw_value = var.get()
+                try:
+                    if opt_type == "bool":
+                        options[key] = self._parse_bool_value(raw_value)
+                    elif opt_type == "int":
+                        options[key] = int(str(raw_value).strip())
+                    elif opt_type == "float":
+                        options[key] = float(str(raw_value).strip())
+                    else:
+                        options[key] = str(raw_value).strip()
+                except ValueError:
+                    label = option_info.get("label", key)
+                    if opt_type == "bool":
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的布尔值")
+                    elif opt_type == "int":
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的整数")
+                    elif opt_type == "float":
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的浮点数")
+                    else:
+                        messagebox.showerror("错误", f"选项 {label} 值无效")
+                    return
+            
+            options = self._clean_option_values(options)
             
             restart_dialog.destroy()
             
@@ -1350,12 +1693,12 @@ class WebODMClientUI:
         ttk.Button(button_frame, text="取消", command=restart_dialog.destroy).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="重启任务", command=do_restart).pack(side=tk.RIGHT)
     
-    def start_restart_tasks(self, task_ids: List[Union[int, str]], options: Union[Dict[str, Any], List[str]]):
+    def start_restart_tasks(self, task_ids: List[Union[int, str]], options: Optional[Dict[str, Any]]):
         """开始重启任务
         
         Args:
             task_ids: 任务ID列表
-            options: 处理选项，可以是字典或字符串列表
+            options: 处理选项字典
         """
         self.status_var.set("正在重启任务...")
         self.root.config(cursor="wait")
@@ -1401,18 +1744,7 @@ class WebODMClientUI:
                 
                 update_progress(f"正在重启任务 {task_id} ({task_name})...\n")
                 
-                # 处理不同格式的选项
-                if isinstance(options, list):
-                    # 将列表格式的选项转换为字典
-                    restart_options = {}
-                    for option_str in options:
-                        if '=' in option_str:
-                            key, value = option_str.split('=', 1)
-                            restart_options[key] = value
-                else:
-                    # 已经是字典格式
-                    restart_options = options
-                
+                restart_options = options or {}
                 success = self.api.restart_task(self.current_project_id, task_id, restart_options)
                 
                 if success:
@@ -1603,127 +1935,6 @@ class WebODMClientUI:
         # 启动删除线程
         threading.Thread(target=remove_thread).start()
     
-    def download_task_assets(self, task_id: Union[int, str]):
-        """下载指定任务的资源
-        
-        Args:
-            task_id: 任务ID
-        """
-        if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
-            return
-        
-        if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
-            return
-            
-        # 获取任务信息
-        task_info = self.api.get_task(self.current_project_id, task_id)
-        if not task_info:
-            messagebox.showerror("错误", f"无法获取任务 {task_id} 的信息")
-            return
-        
-        task_name = task_info.get('name', f"任务_{task_id}")
-        available_assets = task_info.get('available_assets', [])
-        
-        if not available_assets:
-            messagebox.showerror("错误", f"任务 {task_name} 没有可用的资源")
-            return
-        
-        # 选择下载目录
-        download_dir = filedialog.askdirectory(title="选择下载目录")
-        if not download_dir:
-            return
-        
-        # 创建资源选择对话框
-        asset_dialog = tk.Toplevel(self.root)
-        asset_dialog.title(f"选择要下载的资源 - {task_name}")
-        asset_dialog.geometry("300x300")
-        asset_dialog.transient(self.root)
-        asset_dialog.grab_set()
-        
-        ttk.Label(asset_dialog, text="选择要下载的资源类型:").pack(pady=(10, 5))
-        
-        # 创建复选框
-        asset_vars = {}
-        for asset in available_assets:
-            var = tk.BooleanVar(value=True)
-            asset_vars[asset] = var
-            ttk.Checkbutton(asset_dialog, text=asset, variable=var).pack(anchor=tk.W, padx=20, pady=2)
-        
-        def do_download():
-            # 获取选中的资源类型
-            selected_assets = [asset for asset, var in asset_vars.items() if var.get()]
-            if not selected_assets:
-                messagebox.showerror("错误", "请至少选择一种资源类型")
-                return
-            
-            asset_dialog.destroy()
-            
-            # 创建任务目录
-            task_dir = os.path.join(download_dir, f"{task_name}_{task_id}")
-            os.makedirs(task_dir, exist_ok=True)
-            
-            # 开始下载
-            self.status_var.set("正在准备下载...")
-            self.root.config(cursor="wait")
-            
-            # 创建进度对话框
-            progress_dialog = tk.Toplevel(self.root)
-            progress_dialog.title("下载进度")
-            progress_dialog.geometry("400x300")
-            progress_dialog.transient(self.root)
-            
-            # 创建进度文本框
-            progress_frame = ttk.Frame(progress_dialog, padding=10)
-            progress_frame.pack(fill=tk.BOTH, expand=True)
-            
-            progress_text = tk.Text(progress_frame, height=15, width=50)
-            progress_text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-            
-            scrollbar = ttk.Scrollbar(progress_frame, command=progress_text.yview)
-            scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-            progress_text.config(yscrollcommand=scrollbar.set)
-            
-            # 添加关闭按钮
-            close_button = ttk.Button(progress_dialog, text="关闭", state=tk.DISABLED)
-            close_button.pack(pady=10)
-            
-            def update_progress(text):
-                self.root.after(0, lambda: progress_text.insert(tk.END, text))
-                self.root.after(0, lambda: progress_text.see(tk.END))
-            
-            # 下载线程
-            def download_thread():
-                total_assets = len(selected_assets)
-                completed_assets = 0
-                failed_assets = 0
-                
-                for asset in selected_assets:
-                    update_progress(f"正在下载资源: {asset}\n")
-                    
-                    output_path = os.path.join(task_dir, asset)
-                    success = self.api.download_asset(self.current_project_id, task_id, asset, output_path)
-                    
-                    if success:
-                        update_progress(f"成功下载: {output_path}\n")
-                    else:
-                        update_progress(f"下载失败: {asset}\n")
-                        failed_assets += 1
-                    
-                    completed_assets += 1
-                    progress_dialog.title(f"下载进度 ({completed_assets}/{total_assets})")
-                
-                # 完成下载
-                update_progress(f"\n下载完成! 总计: {total_assets}, 成功: {total_assets - failed_assets}, 失败: {failed_assets}\n")
-                self.root.after(0, lambda: self.root.config(cursor=""))
-                self.root.after(0, lambda: self.status_var.set("下载完成"))
-                self.root.after(0, lambda: close_button.config(state=tk.NORMAL, command=progress_dialog.destroy))
-            
-            # 启动下载线程
-            threading.Thread(target=download_thread).start()
-        
-        ttk.Button(asset_dialog, text="下载", command=do_download).pack(pady=10)
             
     def restart_task(self, task_id):
         """重启任务并允许修改处理选项"""
@@ -1978,12 +2189,33 @@ class WebODMClientUI:
         
         def do_restart():
             # 收集选项
-            options = []
+            options = {}
             for key, var in option_vars.items():
-                if processing_options[key]["type"] == "bool":
-                    options.append(f"{key}={str(var.get()).lower()}")
-                else:
-                    options.append(f"{key}={var.get()}")
+                option_info = processing_options.get(key, {})
+                opt_type = option_info.get("type", "string")
+                raw_value = var.get()
+                try:
+                    if opt_type == "bool":
+                        options[key] = self._parse_bool_value(raw_value)
+                    elif opt_type == "int":
+                        options[key] = int(str(raw_value).strip())
+                    elif opt_type == "float":
+                        options[key] = float(str(raw_value).strip())
+                    else:
+                        options[key] = str(raw_value).strip()
+                except ValueError:
+                    label = option_info.get("label", key)
+                    if opt_type == "bool":
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的布尔值")
+                    elif opt_type == "int":
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的整数")
+                    elif opt_type == "float":
+                        messagebox.showerror("错误", f"选项 {label} 需要有效的浮点数")
+                    else:
+                        messagebox.showerror("错误", f"选项 {label} 值无效")
+                    return
+            
+            options = self._clean_option_values(options)
             
             restart_dialog.destroy()
             
@@ -1992,14 +2224,7 @@ class WebODMClientUI:
             self.root.config(cursor="wait")
             
             def restart_thread():
-                # 将列表格式的选项转换为字典
-                restart_options = {}
-                for option_str in options:
-                    if '=' in option_str:
-                        key, value = option_str.split('=', 1)
-                        restart_options[key] = value
-                
-                success = self.api.restart_task(self.current_project_id, task_id, restart_options)
+                success = self.api.restart_task(self.current_project_id, task_id, options)
                 
                 if success:
                     self.root.after(0, lambda: self.status_var.set(f"任务 {task_id} 重启成功"))

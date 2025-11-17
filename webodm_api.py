@@ -2,7 +2,8 @@ import requests
 import json
 import os
 import time
-from typing import Dict, List, Any, Optional, Tuple, Union
+import mimetypes
+from typing import Dict, List, Any, Optional, Tuple, Union, Callable
 
 class WebODMAPI:
     """WebODM API客户端类，用于与WebODM服务器进行交互"""
@@ -200,13 +201,30 @@ class WebODMAPI:
             print(f"获取任务详情错误: {str(e)}")
             return None
     
-    def create_task(self, project_id: int, images: List[str], options: Dict[str, Any] = None) -> Optional[Dict[str, Any]]:
+    def create_task(
+        self,
+        project_id: int,
+        images: List[str],
+        options: Dict[str, Any] = None,
+        name: Optional[str] = None,
+        processing_node: Optional[Union[int, str]] = None,
+        auto_processing_node: bool = True,
+        partial: bool = True,
+        align_to: str = "auto",
+        progress_callback: Optional[Callable[[int, int, str], None]] = None
+    ) -> Optional[Dict[str, Any]]:
         """创建新任务
         
         Args:
             project_id: 项目ID
             images: 图片文件路径列表
             options: 处理选项（可选）
+            name: 任务名称（可选）
+            processing_node: 处理节点ID（可选）
+            auto_processing_node: 是否自动分配处理节点
+            partial: 是否以分段上传方式创建任务
+            align_to: 任务对齐方式
+            progress_callback: 上传进度回调函数，参数为(已完成数量, 总数, 状态信息)
             
         Returns:
             Optional[Dict[str, Any]]: 创建的任务信息
@@ -215,45 +233,87 @@ class WebODMAPI:
             raise Exception("未认证，请先调用authenticate方法")
             
         try:
-            # 准备图片文件
-            files = []
+            valid_images = []
             for image_path in images:
                 if os.path.exists(image_path):
-                    filename = os.path.basename(image_path)
-                    files.append(('images', (filename, open(image_path, 'rb'), 'image/jpeg')))
+                    valid_images.append(image_path)
                 else:
                     print(f"图片不存在: {image_path}")
             
-            if not files:
+            if not valid_images:
                 print("没有有效的图片文件")
                 return None
             
-            # 准备处理选项
-            data = {}
-            if options:
-                data['options'] = json.dumps([{'name': k, 'value': v} for k, v in options.items()])
+            total_images = len(valid_images)
+            if progress_callback:
+                progress_callback(0, total_images, "正在创建任务...")
+            
+            payload: Dict[str, Any] = {
+                "name": name or "",
+                "options": self._build_options_list(options),
+                "auto_processing_node": auto_processing_node,
+                "partial": partial,
+                "align_to": align_to
+            }
+            if processing_node is not None:
+                payload["processing_node"] = processing_node
+
+            print(options)
+            print("\n\n")
+            print(payload["options"])
             
             response = requests.post(
                 f"{self.server_url}/api/projects/{project_id}/tasks/",
                 headers=self.headers,
-                files=files,
-                data=data
+                json=payload
             )
             
-            # 关闭所有打开的文件
-            for _, (_, f, _) in files:
-                f.close()
-            
-            if response.status_code == 201 or response.status_code == 200:
-                return response.json()
-            else:
-                print(f"创建任务失败: {response.status_code}")
+            if response.status_code not in (200, 201):
+                print(f"创建任务失败: {response.status_code} {response.text}")
                 return None
+            
+            task_info = response.json()
+            task_id = task_info.get('id')
+            if not task_id:
+                print("创建任务失败: 返回数据中缺少任务ID")
+                return None
+            
+            uploaded = 0
+            for image_path in valid_images:
+                filename = os.path.basename(image_path)
+                if progress_callback:
+                    progress_callback(uploaded, total_images, f"正在上传 {filename}...")
+                
+                success = self.upload_task_image(project_id, task_id, image_path)
+                if not success:
+                    print(f"上传图片失败: {filename}")
+                    return None
+                
+                uploaded += 1
+                if progress_callback:
+                    progress_callback(uploaded, total_images, f"已上传 {filename}")
+            
+            if progress_callback:
+                progress_callback(total_images, total_images, "正在提交任务...")
+            
+            commit_result = self.commit_task(project_id, task_id)
+            if not commit_result:
+                print("提交任务失败")
+                return None
+            
+            return commit_result
         except Exception as e:
             print(f"创建任务错误: {str(e)}")
             return None
     
-    def restart_task(self, project_id: int, task_id: Union[int, str], options: Dict[str, Any] = None) -> bool:
+    def restart_task(
+        self,
+        project_id: int,
+        task_id: Union[int, str],
+        options: Dict[str, Any] = None,
+        processing_node: Optional[Union[int, str]] = None,
+        auto_processing_node: bool = True
+    ) -> bool:
         """重启任务
         
         Args:
@@ -270,7 +330,12 @@ class WebODMAPI:
         try:
             data = {}
             if options:
-                data['options'] = json.dumps([{'name': k, 'value': v} for k, v in options.items()])
+                serialized = self._serialize_options(options)
+                if serialized:
+                    data['options'] = serialized
+            if processing_node is not None:
+                data['processing_node'] = processing_node
+            data['auto_processing_node'] = 'true' if auto_processing_node else 'false'
             
             response = requests.post(
                 f"{self.server_url}/api/projects/{project_id}/tasks/{task_id}/restart/",
@@ -321,12 +386,12 @@ class WebODMAPI:
             raise Exception("未认证，请先调用authenticate方法")
             
         try:
-            response = requests.delete(
-                f"{self.server_url}/api/projects/{project_id}/tasks/{task_id}/",
+            response = requests.post(
+                f"{self.server_url}/api/projects/{project_id}/tasks/{task_id}/remove/",
                 headers=self.headers
             )
             
-            return response.status_code == 204
+            return response.status_code == 200
         except Exception as e:
             print(f"删除任务错误: {str(e)}")
             return False
@@ -408,6 +473,90 @@ class WebODMAPI:
         except Exception as e:
             print(f"获取处理选项错误: {str(e)}")
             return []
+    
+    def upload_task_image(self, project_id: int, task_id: Union[int, str], image_path: str) -> bool:
+        """上传单张图片到任务"""
+        if not self.token:
+            raise Exception("未认证，请先调用authenticate方法")
+        
+        if not os.path.exists(image_path):
+            print(f"图片不存在: {image_path}")
+            return False
+        
+        try:
+            filename = os.path.basename(image_path)
+            mime_type = mimetypes.guess_type(image_path)[0] or "application/octet-stream"
+            with open(image_path, 'rb') as f:
+                files = {'images': (filename, f, mime_type)}
+                response = requests.post(
+                    f"{self.server_url}/api/projects/{project_id}/tasks/{task_id}/upload/",
+                    headers=self.headers,
+                    files=files
+                )
+            if response.status_code == 200:
+                return True
+            print(f"上传图片失败: {response.status_code} {response.text}")
+            return False
+        except Exception as e:
+            print(f"上传图片错误: {str(e)}")
+            return False
+    
+    def commit_task(self, project_id: int, task_id: Union[int, str]) -> Optional[Dict[str, Any]]:
+        """提交已上传图片的任务"""
+        if not self.token:
+            raise Exception("未认证，请先调用authenticate方法")
+        
+        try:
+            response = requests.post(
+                f"{self.server_url}/api/projects/{project_id}/tasks/{task_id}/commit/",
+                headers=self.headers
+            )
+            if response.status_code == 200:
+                return response.json()
+            print(f"提交任务失败: {response.status_code} {response.text}")
+            return None
+        except Exception as e:
+            print(f"提交任务错误: {str(e)}")
+            return None
+    
+    def _build_options_list(self, options: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """将处理选项转换为API需要的列表"""
+        if not options:
+            return []
+        serialized = []
+        for key, value in options.items():
+            if key is None:
+                continue
+            formatted = self._format_option_value(value)
+            if formatted is None:
+                continue
+            serialized.append({'name': key, 'value': formatted})
+        return serialized
+    
+    def _serialize_options(self, options: Dict[str, Any]) -> str:
+        """将处理选项转换为API需要的JSON字符串"""
+        serialized = []
+        for key, value in options.items():
+            if key is None:
+                continue
+            formatted = self._format_option_value(value)
+            if formatted is None:
+                continue
+            serialized.append({'name': key, 'value': formatted})
+        return json.dumps(serialized)
+
+    def _format_option_value(self, value: Any) -> Optional[str]:
+        """将选项的值统一转换为字符串表示"""
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return "true" if value else "false"
+        if isinstance(value, (int, float)):
+            return str(value)
+        value_str = str(value).strip()
+        if value_str == "":
+            return None
+        return value_str
     
     def wait_for_task_completion(self, project_id: int, task_id: int, check_interval: int = 3) -> Dict[str, Any]:
         """等待任务完成
