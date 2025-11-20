@@ -19,7 +19,7 @@ status_map = {
     50: "已取消"
 }
 
-VERSION = "1.3.0"
+VERSION = "1.3.1"
 
 class WebODMClientUI:
     """WebODM客户端UI类，使用Tkinter实现用户界面"""
@@ -826,7 +826,7 @@ class WebODMClientUI:
         # 创建任务对话框
         task_dialog = tk.Toplevel(self.root)
         task_dialog.title("新建任务")
-        task_dialog.geometry("600x700")
+        task_dialog.geometry("600x750")
         task_dialog.transient(self.root)
         
         
