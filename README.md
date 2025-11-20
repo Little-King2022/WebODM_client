@@ -1,4 +1,4 @@
-# WebODM Client
+# WebODM Client (v1.3.0)
 <img width="1252" height="940" alt="image" src="https://github.com/user-attachments/assets/bad42984-ae9c-4026-82b6-55766fb1b76e" />
 
 A Python and Tkinter-based [WebODM](https://github.com/OpenDroneMap/WebODM) client for batch management of projects and image stitching tasks in WebODM.
@@ -13,7 +13,11 @@ A Python and Tkinter-based [WebODM](https://github.com/OpenDroneMap/WebODM) clie
 - Project Management: View, create, and manage WebODM projects
 - Task Management: Create, view, and manage tasks within selected projects
 - Batch Operations: Support for batch operations on multiple tasks, such as downloading assets, restarting/canceling/deleting tasks
-- Processing Options: Support for setting processing options when creating or restarting tasks
+- Preset-Based Parameters: Load presets from `/api/presets/`; both task creation and restart send only preset options
+- Background Uploads: Image uploads run in the background and auto commit; non-blocking UI
+- Integrated Progress UI: Upload progress is shown inside the New Task dialog; the dialog can be minimized
+- Multiple New Task Dialogs: Support opening multiple New Task dialogs concurrently, each with independent progress
+- Credential Caching: Cache username and password to the local config for faster login (see Security Notes)
 
 ## Requirements
 
@@ -38,7 +42,7 @@ python main.py
 ```
 
 2. Enter the WebODM server address in the interface (default is http://localhost:8000)
-3. Click the "Login" button and enter your username and password
+3. Click the "Login" button and enter your username and password (credentials will be cached locally after a successful login)
 4. After successful login, you can view and manage projects and tasks
 
 ## Main Features
@@ -52,19 +56,22 @@ python main.py
 ### Task Management
 
 - View Task List: Automatically loads the task list after selecting a project
-- Create New Task: Click the "New Task" button, select image files, and set processing options
+- Create New Task: Click the "New Task" button, select image files, choose a preset, and start. Uploads run in the background and will auto-commit. Upload progress is displayed inside the dialog, which can be minimized. You can open multiple New Task dialogs to run uploads concurrently.
 - View Task Details: Double-click on a task in the task list to view detailed information
 
 ### Batch Operations
 
 - Download Assets: Select one or more tasks, click the "Download Assets" button, choose the asset types to download and the save directory
-- Restart Tasks: Select one or more tasks, click the "Restart Tasks" button to modify processing options
+- Restart Tasks: Select one or more tasks, click the "Restart Tasks" button and select a preset. Only preset options are sent.
 - Cancel Tasks: Select one or more tasks, click the "Cancel Tasks" button to cancel pending or in-progress tasks
 - Delete Tasks: Select one or more tasks, click the "Delete Tasks" button to delete the selected tasks
 
 ## Configuration File
 
-The program creates a `.webodm_client` folder in the user's home directory to store configuration information, including server address and authentication token, allowing direct login to the server the next time the program is opened.
+The program creates a `.webodm_client` folder in the user's home directory to store configuration information, including server address, authentication token, and cached credentials (username and password) to streamline future logins.
+
+### Security Notes
+- Credential caching is enabled for convenience. If you prefer not to cache passwords, disable or remove the stored `password` in the config file.
 
 ## Notes
 
