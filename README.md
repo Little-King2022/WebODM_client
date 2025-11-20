@@ -80,13 +80,10 @@ The program creates a `.webodm_client` folder in the user's home directory to st
 - Downloading large asset files may take a long time, please ensure you have enough disk space
 
 ## Snapshots
+<img width="300" alt="image" src="https://github.com/user-attachments/assets/5716be72-a5e6-4caf-a394-dba8d07b9334" />
 <img width="300" alt="image" src="https://github.com/user-attachments/assets/0a708b1e-7b04-4ab7-ae97-dc3725156c28" />
-<img width="300" alt="image" src="https://github.com/user-attachments/assets/8eefda60-fde2-4dbd-b4b5-1542e44a78ef" />
-<img width="300" alt="image" src="https://github.com/user-attachments/assets/8b1e8a7d-147a-4130-a4e7-485313af8f43" />
 <img width="300" alt="image" src="https://github.com/user-attachments/assets/b037f80d-c215-43a3-9af5-7c74e8f9b23e" />
 <img width="300" alt="image" src="https://github.com/user-attachments/assets/2da04c7a-2f57-43c1-b0d9-a6e12d81ae08" />
-<img width="300" alt="image" src="https://github.com/user-attachments/assets/e959ae15-2509-4169-b925-a1b308ccd179" />
-<img width="300" alt="image" src="https://github.com/user-attachments/assets/1e335bb6-d52f-499d-9d22-b366cb6a29b4" />
 
 
 
