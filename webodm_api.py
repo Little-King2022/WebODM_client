@@ -458,7 +458,7 @@ class WebODMAPI:
         """
         if not self.token:
             raise Exception("未认证，请先调用authenticate方法")
-            
+        
         try:
             response = requests.get(
                 f"{self.server_url}/api/processingnodes/options/",
@@ -472,6 +472,35 @@ class WebODMAPI:
                 return []
         except Exception as e:
             print(f"获取处理选项错误: {str(e)}")
+            return []
+
+    def get_presets(self) -> List[Dict[str, Any]]:
+        """获取WebODM的预设配置列表
+        
+        Returns:
+            List[Dict[str, Any]]: 预设配置列表，每项包含id、name、options等字段
+        """
+        if not self.token:
+            raise Exception("未认证，请先调用authenticate方法")
+
+        try:
+            response = requests.get(
+                f"{self.server_url}/api/presets/",
+                headers=self.headers
+            )
+
+            if response.status_code == 200:
+                result = response.json()
+                if isinstance(result, list):
+                    return result
+                elif isinstance(result, dict) and 'results' in result:
+                    return result['results']
+                return []
+            else:
+                print(f"获取预设配置失败: {response.status_code}")
+                return []
+        except Exception as e:
+            print(f"获取预设配置错误: {str(e)}")
             return []
     
     def upload_task_image(self, project_id: int, task_id: Union[int, str], image_path: str) -> bool:
@@ -554,6 +583,8 @@ class WebODMAPI:
         if isinstance(value, (int, float)):
             return str(value)
         value_str = str(value).strip()
+        if value_str.lower() in {"none", "null"}:
+            return None
         if value_str == "":
             return None
         return value_str

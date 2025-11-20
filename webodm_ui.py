@@ -19,7 +19,7 @@ status_map = {
     50: "已取消"
 }
 
-VERSION = "1.0.0"
+VERSION = "1.3.0"
 
 class WebODMClientUI:
     """WebODM客户端UI类，使用Tkinter实现用户界面"""
@@ -277,7 +277,7 @@ class WebODMClientUI:
     
     def show_about(self):
         """显示关于对话框"""
-        messagebox.showinfo("关于", f"WebODM 客户端{VERSION}\n\n一个基于Python和Tkinter的 WebODM(https://github.com/OpenDroneMap/WebODM) 客户端，用于批量管理WebODM中的项目和图片拼接任务")
+        messagebox.showinfo("关于", f"WebODM 客户端{VERSION}\n\nhttps://github.com/Little-King2022/WebODM_client\n\n基于Python和Tkinter的 WebODM(https://github.com/OpenDroneMap/WebODM) 客户端，用于批量管理WebODM中的项目和图片拼接任务")
     
     def login(self):
         """登录WebODM服务器"""
@@ -291,6 +291,11 @@ class WebODMClientUI:
         login_dialog.resizable(False, False)
         login_dialog.transient(self.root)
         login_dialog.grab_set()
+        # 将对话框居中显示
+        login_dialog.update_idletasks()
+        x = (login_dialog.winfo_screenwidth() - login_dialog.winfo_width()) // 2
+        y = (login_dialog.winfo_screenheight() - login_dialog.winfo_height()) // 2
+        login_dialog.geometry(f"+{x}+{y}")
         
         ttk.Label(login_dialog, text="用户名:").grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
         username_var = tk.StringVar()
@@ -315,6 +320,13 @@ class WebODMClientUI:
             
             def login_thread():
                 success = self.api.authenticate(username, password)
+                if success:
+                    try:
+                        self.config['username'] = username
+                        self.config['password'] = password
+                        self.save_config()
+                    except Exception:
+                        pass
                 
                 # 在主线程中更新UI
                 self.root.after(0, lambda: self.after_login(success, login_dialog))
@@ -326,8 +338,9 @@ class WebODMClientUI:
         # 设置回车键登录
         login_dialog.bind("<Return>", lambda event: do_login())
         
-        # 聚焦用户名输入框
-        login_dialog.after(100, lambda: username_var.get() or username_var.set(self.config.get('username', '')))
+        # 预填用户名和密码，并聚焦密码输入框
+        login_dialog.after(100, lambda: username_var.set(self.config.get('username', '')))
+        login_dialog.after(100, lambda: password_var.set(self.config.get('password', '')))
         login_dialog.after(100, lambda: password_entry.focus())
     
     def after_login(self, success: bool, login_dialog: tk.Toplevel):
@@ -815,7 +828,7 @@ class WebODMClientUI:
         task_dialog.title("新建任务")
         task_dialog.geometry("600x700")
         task_dialog.transient(self.root)
-        task_dialog.grab_set()
+        
         
         # 创建框架
         main_frame = ttk.Frame(task_dialog, padding=10)
@@ -826,10 +839,9 @@ class WebODMClientUI:
         except Exception:
             pass
         
-        # 任务名称
         ttk.Label(main_frame, text="任务名称:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
-        self.task_name_var = tk.StringVar(value="")
-        ttk.Entry(main_frame, textvariable=self.task_name_var, width=30).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
+        task_name_var = tk.StringVar(value="")
+        ttk.Entry(main_frame, textvariable=task_name_var, width=30).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 图片选择
         ttk.Label(main_frame, text="选择图片:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
@@ -842,246 +854,129 @@ class WebODMClientUI:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         # 创建图片列表
-        self.images_listbox = tk.Listbox(images_frame, yscrollcommand=scrollbar.set, height=10)
-        self.images_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        scrollbar.config(command=self.images_listbox.yview)
+        images_listbox = tk.Listbox(images_frame, yscrollcommand=scrollbar.set, height=10)
+        images_listbox.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        scrollbar.config(command=images_listbox.yview)
         
-        # 图片路径列表
-        self.image_paths = []
+        image_paths: List[str] = []
         
         # 按钮框架
         buttons_frame = ttk.Frame(main_frame)
         buttons_frame.grid(row=3, column=0, columnspan=2, sticky=tk.W, padx=5, pady=5)
         
-        ttk.Button(buttons_frame, text="添加图片", command=self.add_images).pack(side=tk.LEFT, padx=2)
-        ttk.Button(buttons_frame, text="移除选中", command=self.remove_selected_images).pack(side=tk.LEFT, padx=2)
-        ttk.Button(buttons_frame, text="清空列表", command=self.clear_images).pack(side=tk.LEFT, padx=2)
-        
-        # 处理选项
-        ttk.Label(main_frame, text="处理选项:", font=("TkDefaultFont", 10, "bold")).grid(row=4, column=0, sticky=tk.W, padx=5, pady=10)
-        
-        options_container = ttk.Frame(main_frame)
-        options_container.grid(row=5, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
-        
-        canvas = tk.Canvas(options_container)
-        scrollbar = ttk.Scrollbar(options_container, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        def _on_mousewheel_options(event):
+        def add_images():
+            filetypes = [
+                ("图片文件", "*.jpg *.jpeg *.png *.tif *.tiff"),
+                ("JPEG文件", "*.jpg *.jpeg"),
+                ("PNG文件", "*.png"),
+                ("TIFF文件", "*.tif *.tiff"),
+                ("所有文件", "*.*")
+            ]
+            filenames = filedialog.askopenfilenames(title="选择图片", filetypes=filetypes)
+            if not filenames:
+                return
+            for filename in filenames:
+                if filename not in image_paths:
+                    image_paths.append(filename)
+                    images_listbox.insert(tk.END, os.path.basename(filename))
             try:
-                canvas.yview_scroll(-int(event.delta/120), "units")
+                if task_name_var.get().strip() == "":
+                    first_file = filenames[0]
+                    folder_name = os.path.basename(os.path.dirname(first_file))
+                    if folder_name:
+                        task_name_var.set(folder_name)
             except Exception:
                 pass
-        canvas.bind("<MouseWheel>", _on_mousewheel_options)
+        def remove_selected_images():
+            selection = images_listbox.curselection()
+            if not selection:
+                return
+            for index in sorted(selection, reverse=True):
+                del image_paths[index]
+                images_listbox.delete(index)
+        def clear_images():
+            image_paths.clear()
+            images_listbox.delete(0, tk.END)
+        ttk.Button(buttons_frame, text="添加图片", command=add_images).pack(side=tk.LEFT, padx=2)
+        ttk.Button(buttons_frame, text="移除选中", command=remove_selected_images).pack(side=tk.LEFT, padx=2)
+        ttk.Button(buttons_frame, text="清空列表", command=clear_images).pack(side=tk.LEFT, padx=2)
         
-        self.status_var.set("正在获取处理选项...")
-        processing_node_options = self.api.get_processing_node_options()
-        processing_options = {}
-        if processing_node_options:
-            for option in processing_node_options:
-                option_name = option.get('name')
-                if not option_name:
-                    continue
-                option_type = option.get('type')
-                option_value = option.get('value')
-                option_domain = option.get('domain')
-                option_help = option.get('help', '')
-                widget_type = "string"
-                default_value = option_value
-                options_list = []
-                if option_type == "bool":
-                    widget_type = "bool"
-                    default_value = option_value.lower() == "true" if isinstance(option_value, str) else bool(option_value)
-                elif option_type == "int":
-                    widget_type = "int"
-                    try:
-                        default_value = int(option_value) if option_value else 0
-                    except (ValueError, TypeError):
-                        default_value = 0
-                elif option_type == "float" or option_type == "percent":
-                    widget_type = "float"
-                    try:
-                        default_value = float(option_value) if option_value else 0.0
-                    except (ValueError, TypeError):
-                        default_value = 0.0
-                elif option_type == "enum" and isinstance(option_domain, list):
-                    widget_type = "select"
-                    options_list = option_domain
-                    default_value = option_value if option_value in option_domain else (option_domain[0] if option_domain else "")
-                processing_options[option_name] = {
-                    "label": option_name,
-                    "type": widget_type,
-                    "default": default_value,
-                    "options": options_list,
-                    "help": option_help
-                }
-        else:
-            processing_options = {
-                "mesh-octree-depth": {"label": "网格八叉树深度", "type": "int", "default": 11},
-                "mesh-size": {"label": "网格大小", "type": "int", "default": 200000},
-                "min-num-features": {"label": "最小特征数", "type": "int", "default": 8000},
-                "orthophoto-resolution": {"label": "正射影像分辨率", "type": "float", "default": 2},
-                "pc-quality": {"label": "点云质量", "type": "select", "default": "medium", "options": ["ultra", "high", "medium", "low", "lowest"]},
-                "pc-filter": {"label": "点云过滤", "type": "int", "default": 2},
-                "dsm": {"label": "生成DSM", "type": "bool", "default": True},
-                "dtm": {"label": "生成DTM", "type": "bool", "default": False},
-                "cog": {"label": "生成COG格式", "type": "bool", "default": False},
-                "dem-resolution": {"label": "DEM分辨率", "type": "float", "default": 2},
-                "feature-quality": {"label": "特征质量", "type": "select", "default": "medium", "options": ["ultra", "high", "medium", "low", "lowest"]},
-                "use-3dmesh": {"label": "使用3D网格", "type": "bool", "default": False},
-            }
-        self.status_var.set("就绪")
+        # 预设选择
+        ttk.Label(main_frame, text="选择预设:", font=("TkDefaultFont", 10, "bold")).grid(row=4, column=0, sticky=tk.W, padx=5, pady=10)
+
+        preset_frame = ttk.Frame(main_frame)
+        preset_frame.grid(row=5, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
+
+        presets = self.api.get_presets()
+        preset_name_map = {p.get('name', f"预设_{p.get('id')}"): p for p in presets} if presets else {}
+        preset_names = list(preset_name_map.keys())
+        default_preset_name = next((name for name in preset_names if name.lower() == 'default'), preset_names[0] if preset_names else '')
+
+        selected_preset_var = tk.StringVar(value=default_preset_name)
+        ttk.Label(preset_frame, text="预设:").pack(side=tk.LEFT, padx=(0, 5))
+        preset_select = ttk.Combobox(preset_frame, textvariable=selected_preset_var, values=preset_names, state="readonly", width=30)
+        preset_select.pack(side=tk.LEFT)
+
+        # 预设详情显示
+        details_container = ttk.LabelFrame(main_frame, text="预设选项 (只读)")
+        details_container.grid(row=6, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
+        details_text = tk.Text(details_container, height=10, width=60)
+        details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        def render_preset_details():
+            details_text.config(state="normal")
+            details_text.delete("1.0", tk.END)
+            name = selected_preset_var.get()
+            preset = preset_name_map.get(name)
+            if preset and isinstance(preset.get('options'), list):
+                for opt in preset['options']:
+                    oname = str(opt.get('name'))
+                    oval = opt.get('value')
+                    details_text.insert(tk.END, f"{oname} = {oval}\n")
+            details_text.config(state="disabled")
+
+        preset_select.bind("<<ComboboxSelected>>", lambda e: render_preset_details())
+        render_preset_details()
         
-        categories = {
-            "基本设置": ["end-with", "rerun-from", "min-num-features", "feature-type", "feature-quality", "matcher-type"],
-            "点云设置": ["pc-quality", "pc-filter", "pc-classify", "pc-rectify", "pc-geometric"],
-            "网格设置": ["mesh-size", "mesh-octree-depth", "mesh-samples", "mesh-point-weight", "use-3dmesh"],
-            "正射影像设置": ["orthophoto-resolution", "orthophoto-no-tiled", "orthophoto-png", "orthophoto-compression", "cog"],
-            "DEM设置": ["dem-resolution", "dem-gapfill-steps", "dsm", "dtm", "dem-euclidean-map"],
-            "相机设置": ["use-fixed-camera-params", "cameras", "camera-lens", "radiometric-calibration"],
-            "其他设置": []
-        }
-        
-        tab_control = ttk.Notebook(scrollable_frame)
-        tab_control.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        all_options = {}
-        for key, option in processing_options.items():
-            all_options[key] = option
-        
-        tabs = {}
-        for category, option_keys in categories.items():
-            tab = ttk.Frame(tab_control)
-            tabs[category] = tab
-            tab_control.add(tab, text=category)
-        
-        for key in all_options.keys():
-            found = False
-            for category, option_keys in categories.items():
-                if key in option_keys:
-                    found = True
-                    break
-            if not found:
-                categories["其他设置"].append(key)
-        
-        option_vars = {}
-        for category, option_keys in categories.items():
-            tab = tabs[category]
-            if not option_keys:
-                ttk.Label(tab, text="没有可用的选项").pack(pady=20)
-                continue
-            for key in option_keys:
-                if key not in all_options:
-                    continue
-                option = all_options[key]
-                option_frame = ttk.Frame(tab)
-                option_frame.pack(fill=tk.X, pady=5, padx=10)
-                label_frame = ttk.Frame(option_frame)
-                label_frame.pack(fill=tk.X, side=tk.TOP)
-                option_label = option.get("label", key)
-                ttk.Label(label_frame, text=f"{option_label}").pack(side=tk.LEFT, anchor="w")
-                control_frame = ttk.Frame(option_frame)
-                control_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 0))
-                if option["type"] == "bool":
-                    var = tk.BooleanVar(value=option["default"])
-                    ttk.Checkbutton(control_frame, variable=var).pack(side=tk.LEFT)
-                elif option["type"] == "select":
-                    var = tk.StringVar(value=option["default"])
-                    ttk.Combobox(control_frame, textvariable=var, values=option["options"], state="readonly", width=30).pack(side=tk.LEFT)
-                else:
-                    var = tk.StringVar(value=str(option["default"]))
-                    ttk.Entry(control_frame, textvariable=var, width=30).pack(side=tk.LEFT)
-                if "help" in option and option["help"]:
-                    help_frame = ttk.Frame(option_frame)
-                    help_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 5))
-                    help_text = option["help"].replace("%(default)s", str(option["default"]))
-                    if "options" in option and option["options"]:
-                        help_text = help_text.replace("%(choices)s", ", ".join(option["options"]))
-                    ttk.Label(help_frame, text=help_text, wraplength=500, foreground="gray").pack(side=tk.LEFT, anchor="w")
-                ttk.Separator(option_frame, orient="horizontal").pack(fill=tk.X, pady=(5, 0))
-                option_vars[key] = var
-        
-        # 创建任务按钮
+        progress_group = ttk.LabelFrame(main_frame, text="上传进度")
+        progress_group.grid(row=7, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
+        upload_status_var = tk.StringVar(value="等待开始...")
+        ttk.Label(progress_group, textvariable=upload_status_var).pack(pady=(8, 6), padx=10, anchor=tk.W)
+        upload_progress_var = tk.DoubleVar(value=0)
+        upload_progress = ttk.Progressbar(progress_group, orient="horizontal", length=320, mode="determinate", maximum=1, variable=upload_progress_var)
+        upload_progress.pack(pady=4, padx=10, fill=tk.X)
+        upload_count_var = tk.StringVar(value="")
+        ttk.Label(progress_group, textvariable=upload_count_var).pack(pady=(0, 8), padx=10, anchor=tk.W)
+
         button_frame = ttk.Frame(task_dialog)
         button_frame.pack(fill=tk.X, padx=10, pady=10)
         
         def do_create():
-            if not self.image_paths:
+            if not image_paths:
                 messagebox.showerror("错误", "请至少添加一张图片")
                 return
             
+            selected_name = selected_preset_var.get()
+            preset = preset_name_map.get(selected_name)
+            if not preset:
+                messagebox.showerror("错误", "请选择有效的预设")
+                return
             options = {}
-            for key, var in option_vars.items():
-                option_info = processing_options.get(key, {})
-                opt_type = option_info.get("type", "string")
-                raw_value = var.get()
-                try:
-                    if opt_type == "bool":
-                        options[key] = self._parse_bool_value(raw_value)
-                    elif opt_type == "int":
-                        value_str = str(raw_value).strip()
-                        options[key] = int(value_str)
-                    elif opt_type == "float":
-                        value_str = str(raw_value).strip()
-                        options[key] = float(value_str)
-                    else:
-                        options[key] = str(raw_value).strip()
-                except ValueError:
-                    label = option_info.get("label", key)
-                    if opt_type == "bool":
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的布尔值")
-                    else:
-                        error_type = "整数" if opt_type == "int" else "浮点数"
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的{error_type}")
-                    return
-            
-            options = self._clean_option_values(options)
+            for opt in preset.get('options', []):
+                oname = opt.get('name')
+                if not oname:
+                    continue
+                options[oname] = opt.get('value')
             
             self.status_var.set("正在创建任务...")
-            task_dialog.config(cursor="wait")
-            self.root.config(cursor="wait")
-
-            upload_dialog = tk.Toplevel(task_dialog)
-            upload_dialog.title("上传进度")
-            upload_dialog.geometry("400x200")
-            upload_dialog.transient(task_dialog)
-            upload_dialog.grab_set()
-            upload_dialog.resizable(False, False)
-            upload_dialog.protocol("WM_DELETE_WINDOW", lambda: None)
-            
-            upload_status_var = tk.StringVar(value="正在准备上传...")
-            ttk.Label(upload_dialog, textvariable=upload_status_var).pack(pady=(20, 10))
-            
-            total_images = max(len(self.image_paths), 1)
-            upload_progress_var = tk.DoubleVar(value=0)
-            upload_progress = ttk.Progressbar(
-                upload_dialog,
-                orient="horizontal",
-                length=320,
-                mode="determinate",
-                maximum=total_images,
-                variable=upload_progress_var
-            )
-            upload_progress.pack(pady=5, padx=20, fill=tk.X)
-            
-            upload_count_var = tk.StringVar(value=f"0/{len(self.image_paths)}")
-            ttk.Label(upload_dialog, textvariable=upload_count_var).pack(pady=(0, 10))
+            total_images = max(len(image_paths), 1)
+            upload_progress.config(maximum=total_images)
+            upload_progress_var.set(0)
+            upload_count_var.set(f"0/{len(image_paths)}")
+            upload_status_var.set("正在准备上传...")
             
             def update_upload_progress(completed: int, total: int, message: str):
                 def _update():
-                    if not upload_dialog.winfo_exists():
-                        return
                     maximum = max(total, 1)
                     upload_progress.config(maximum=maximum)
                     upload_progress_var.set(min(completed, maximum))
@@ -1093,12 +988,12 @@ class WebODMClientUI:
                 self.root.after(0, _update)
             
             def create_thread():
-                task_name = self.task_name_var.get().strip()
+                task_name = task_name_var.get().strip()
                 task = None
                 try:
                     task = self.api.create_task(
                         self.current_project_id,
-                        self.image_paths,
+                        image_paths,
                         options,
                         name=task_name if task_name else None,
                         progress_callback=update_upload_progress
@@ -1108,19 +1003,20 @@ class WebODMClientUI:
                     task = None
                 finally:
                     def finish():
-                        if upload_dialog.winfo_exists():
-                            try:
-                                upload_dialog.grab_release()
-                            except Exception:
-                                pass
-                            upload_dialog.destroy()
-                        self.after_create_task(task, task_dialog)
+                        if task:
+                            self.status_var.set("任务创建成功")
+                            self.load_tasks()
+                            upload_status_var.set("上传完成，已提交任务")
+                        else:
+                            self.status_var.set("任务创建失败")
+                            messagebox.showerror("创建失败", "无法创建任务，请检查图片文件和网络连接")
                     self.root.after(0, finish)
             
             threading.Thread(target=create_thread).start()
         
         ttk.Button(button_frame, text="取消", command=task_dialog.destroy).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="创建任务", command=do_create).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text="最小化", command=task_dialog.iconify).pack(side=tk.LEFT)
     
     def add_images(self):
         """添加图片"""
@@ -1410,6 +1306,8 @@ class WebODMClientUI:
                 trimmed = value.strip()
                 if not trimmed:
                     continue
+                if trimmed.lower() in {"none", "null"}:
+                    continue
                 cleaned[key] = trimmed
             else:
                 cleaned[key] = value
@@ -1442,254 +1340,71 @@ class WebODMClientUI:
             self.restart_task(task_ids[0])
             return
         
-        # 获取处理节点选项
-        self.status_var.set("正在获取处理选项...")
-        processing_node_options = self.api.get_processing_node_options()
-        if not processing_node_options:
-            messagebox.showerror("错误", "无法获取处理选项")
+        # 获取预设
+        self.status_var.set("正在获取预设...")
+        presets = self.api.get_presets()
+        if not presets:
+            messagebox.showerror("错误", "无法获取预设配置")
             self.status_var.set("就绪")
             return
-            
-        # 创建重启选项对话框
+
+        # 创建重启选项对话框（预设选择）
         restart_dialog = tk.Toplevel(self.root)
         restart_dialog.title("批量重启任务")
-        restart_dialog.geometry("600x700")
+        restart_dialog.geometry("500x400")
         restart_dialog.transient(self.root)
         restart_dialog.grab_set()
-        
-        # 创建滚动区域
+
         main_frame = ttk.Frame(restart_dialog)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        canvas = tk.Canvas(main_frame)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # 添加标题
-        ttk.Label(scrollable_frame, text=f"将重启 {len(task_ids)} 个任务，您可以修改以下处理选项:", 
-                 font=("TkDefaultFont", 10, "bold")).pack(pady=10)
-        
-        # 将API返回的选项转换为易于处理的格式
-        processing_options = {}
-        for option in processing_node_options:
-            option_name = option.get('name')
-            if not option_name:
-                continue
-                
-            option_type = option.get('type')
-            option_value = option.get('value')
-            option_domain = option.get('domain')
-            option_help = option.get('help', '')
-            
-            # 确定选项类型和默认值
-            widget_type = "string"
-            default_value = option_value
-            options_list = []
-            
-            if option_type == "bool":
-                widget_type = "bool"
-                default_value = option_value.lower() == "true" if isinstance(option_value, str) else bool(option_value)
-            elif option_type == "int":
-                widget_type = "int"
-                try:
-                    default_value = int(option_value) if option_value else 0
-                except (ValueError, TypeError):
-                    default_value = 0
-            elif option_type == "float" or option_type == "percent":
-                widget_type = "float"
-                try:
-                    default_value = float(option_value) if option_value else 0.0
-                except (ValueError, TypeError):
-                    default_value = 0.0
-            elif option_type == "enum" and isinstance(option_domain, list):
-                widget_type = "select"
-                options_list = option_domain
-                default_value = option_value if option_value in option_domain else (option_domain[0] if option_domain else "")
-            
-            # 创建选项字典
-            processing_options[option_name] = {
-                "label": option_name,
-                "type": widget_type,
-                "default": default_value,
-                "current": None,
-                "options": options_list,
-                "help": option_help
-            }
-        
-        # 如果API没有返回选项，使用默认选项
-        if not processing_options:
-            processing_options = {
-                "mesh-octree-depth": {"label": "网格八叉树深度", "type": "int", "default": 11, "current": None},
-                "mesh-size": {"label": "网格大小", "type": "int", "default": 200000, "current": None},
-                "min-num-features": {"label": "最小特征数", "type": "int", "default": 8000, "current": None},
-                "orthophoto-resolution": {"label": "正射影像分辨率", "type": "float", "default": 2, "current": None},
-                "pc-quality": {"label": "点云质量", "type": "select", "default": "medium", "current": None, 
-                              "options": ["ultra", "high", "medium", "low", "lowest"]},
-                "pc-filter": {"label": "点云过滤", "type": "int", "default": 2, "current": None},
-                "dsm": {"label": "生成DSM", "type": "bool", "default": True, "current": None},
-                "dtm": {"label": "生成DTM", "type": "bool", "default": False, "current": None},
-                "cog": {"label": "生成COG格式", "type": "bool", "default": False, "current": None},
-                "dem-resolution": {"label": "DEM分辨率", "type": "float", "default": 2, "current": None},
-                "feature-quality": {"label": "特征质量", "type": "select", "default": "medium", "current": None,
-                                   "options": ["ultra", "high", "medium", "low", "lowest"]},
-                "use-3dmesh": {"label": "使用3D网格", "type": "bool", "default": False, "current": None},
-            }
-        
-        self.status_var.set("就绪")
-        
-        # 创建分类标签
-        categories = {
-            "基本设置": ["end-with", "rerun-from", "min-num-features", "feature-type", "feature-quality", "matcher-type"],
-            "点云设置": ["pc-quality", "pc-filter", "pc-classify", "pc-rectify", "pc-geometric"],
-            "网格设置": ["mesh-size", "mesh-octree-depth", "mesh-samples", "mesh-point-weight", "use-3dmesh"],
-            "正射影像设置": ["orthophoto-resolution", "orthophoto-no-tiled", "orthophoto-png", "orthophoto-compression", "cog"],
-            "DEM设置": ["dem-resolution", "dem-gapfill-steps", "dsm", "dtm", "dem-euclidean-map"],
-            "相机设置": ["use-fixed-camera-params", "cameras", "camera-lens", "radiometric-calibration"],
-            "其他设置": []
-        }
-        
-        # 创建分类选项卡
-        tab_control = ttk.Notebook(scrollable_frame)
-        tab_control.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        # 创建所有选项的字典，用于分类
-        all_options = {}
-        for key, option in processing_options.items():
-            all_options[key] = option
-        
-        # 创建分类选项卡
-        tabs = {}
-        for category, option_keys in categories.items():
-            tab = ttk.Frame(tab_control)
-            tabs[category] = tab
-            tab_control.add(tab, text=category)
-        
-        # 添加未分类的选项到"其他设置"选项卡
-        for key in all_options.keys():
-            found = False
-            for category, option_keys in categories.items():
-                if key in option_keys:
-                    found = True
-                    break
-            if not found:
-                categories["其他设置"].append(key)
-        
-        # 创建选项控件
-        option_vars = {}
-        
-        # 为每个分类创建选项控件
-        for category, option_keys in categories.items():
-            tab = tabs[category]
-            
-            # 如果该分类没有选项，添加提示信息
-            if not option_keys:
-                ttk.Label(tab, text="没有可用的选项").pack(pady=20)
-                continue
-            
-            # 创建选项控件
-            for key in option_keys:
-                if key not in all_options:
-                    continue
-                    
-                option = all_options[key]
-                
-                # 创建选项框架
-                option_frame = ttk.Frame(tab)
-                option_frame.pack(fill=tk.X, pady=5, padx=10)
-                
-                # 创建选项标签和控件
-                label_frame = ttk.Frame(option_frame)
-                label_frame.pack(fill=tk.X, side=tk.TOP)
-                
-                # 显示选项名称
-                option_label = option.get("label", key)
-                label_text = f"{option_label}"
-                ttk.Label(label_frame, text=label_text).pack(side=tk.LEFT, anchor="w")
-                
-                # 创建控件框架
-                control_frame = ttk.Frame(option_frame)
-                control_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 0))
-                
-                # 根据选项类型创建不同的控件
-                if option["type"] == "bool":
-                    var = tk.BooleanVar(value=option["default"])
-                    ttk.Checkbutton(control_frame, variable=var).pack(side=tk.LEFT)
-                elif option["type"] == "select":
-                    var = tk.StringVar(value=option["default"])
-                    ttk.Combobox(control_frame, textvariable=var, values=option["options"], state="readonly", width=30).pack(side=tk.LEFT)
-                else:  # int, float, string
-                    var = tk.StringVar(value=str(option["default"]))
-                    ttk.Entry(control_frame, textvariable=var, width=30).pack(side=tk.LEFT)
-                
-                # 添加帮助文本
-                if "help" in option and option["help"]:
-                    help_frame = ttk.Frame(option_frame)
-                    help_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 5))
-                    
-                    help_text = option["help"]
-                    # 替换帮助文本中的占位符
-                    help_text = help_text.replace("%(default)s", str(option["default"]))
-                    if "options" in option and option["options"]:
-                        help_text = help_text.replace("%(choices)s", ", ".join(option["options"]))
-                    
-                    help_label = ttk.Label(help_frame, text=help_text, wraplength=500, foreground="gray")
-                    help_label.pack(side=tk.LEFT, anchor="w")
-                
-                # 添加分隔线
-                ttk.Separator(option_frame, orient="horizontal").pack(fill=tk.X, pady=(5, 0))
-                
-                option_vars[key] = var
-        
-        # 按钮区域
+
+        ttk.Label(main_frame, text=f"将重启 {len(task_ids)} 个任务，请选择预设:", font=("TkDefaultFont", 10, "bold")).pack(pady=(0, 10), anchor=tk.W)
+
+        preset_name_map = {p.get('name', f"预设_{p.get('id')}"): p for p in presets}
+        preset_names = list(preset_name_map.keys())
+        default_preset_name = next((name for name in preset_names if name.lower() == 'default'), preset_names[0])
+
+        selected_preset_var = tk.StringVar(value=default_preset_name)
+        selector_frame = ttk.Frame(main_frame)
+        selector_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(selector_frame, text="预设:").pack(side=tk.LEFT, padx=(0, 5))
+        preset_select = ttk.Combobox(selector_frame, textvariable=selected_preset_var, values=preset_names, state="readonly", width=30)
+        preset_select.pack(side=tk.LEFT)
+
+        details_group = ttk.LabelFrame(main_frame, text="预设选项 (只读)")
+        details_group.pack(fill=tk.BOTH, expand=True, pady=10)
+        details_text = tk.Text(details_group, height=10, width=60)
+        details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        def render_details():
+            details_text.config(state="normal")
+            details_text.delete("1.0", tk.END)
+            preset = preset_name_map.get(selected_preset_var.get())
+            if preset and isinstance(preset.get('options'), list):
+                for opt in preset['options']:
+                    details_text.insert(tk.END, f"{opt.get('name')} = {opt.get('value')}\n")
+            details_text.config(state="disabled")
+
+        preset_select.bind("<<ComboboxSelected>>", lambda e: render_details())
+        render_details()
+
         button_frame = ttk.Frame(restart_dialog)
         button_frame.pack(fill=tk.X, pady=10)
-        
+
         def do_restart():
-            # 收集选项
+            preset = preset_name_map.get(selected_preset_var.get())
+            if not preset:
+                messagebox.showerror("错误", "请选择有效的预设")
+                return
             options = {}
-            for key, var in option_vars.items():
-                option_info = processing_options.get(key, {})
-                opt_type = option_info.get("type", "string")
-                raw_value = var.get()
-                try:
-                    if opt_type == "bool":
-                        options[key] = self._parse_bool_value(raw_value)
-                    elif opt_type == "int":
-                        options[key] = int(str(raw_value).strip())
-                    elif opt_type == "float":
-                        options[key] = float(str(raw_value).strip())
-                    else:
-                        options[key] = str(raw_value).strip()
-                except ValueError:
-                    label = option_info.get("label", key)
-                    if opt_type == "bool":
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的布尔值")
-                    elif opt_type == "int":
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的整数")
-                    elif opt_type == "float":
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的浮点数")
-                    else:
-                        messagebox.showerror("错误", f"选项 {label} 值无效")
-                    return
-            
-            options = self._clean_option_values(options)
-            
+            for opt in preset.get('options', []):
+                name = opt.get('name')
+                if not name:
+                    continue
+                options[name] = opt.get('value')
             restart_dialog.destroy()
-            
-            # 开始重启任务
             self.start_restart_tasks(task_ids, options)
-        
+
         ttk.Button(button_frame, text="取消", command=restart_dialog.destroy).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="重启任务", command=do_restart).pack(side=tk.RIGHT)
     
@@ -1955,288 +1670,84 @@ class WebODMClientUI:
         task_name = task_info.get('name', f"任务_{task_id}")
         current_options = task_info.get('options', [])
         
-        # 获取处理节点选项
-        self.status_var.set("正在获取处理选项...")
-        processing_node_options = self.api.get_processing_node_options()
-        if not processing_node_options:
-            messagebox.showerror("错误", "无法获取处理选项")
+        # 获取预设
+        self.status_var.set("正在获取预设...")
+        presets = self.api.get_presets()
+        if not presets:
+            messagebox.showerror("错误", "无法获取预设配置")
             self.status_var.set("就绪")
             return
-        
-        # 创建重启任务对话框
+
+        # 创建重启任务对话框（预设选择）
         restart_dialog = tk.Toplevel(self.root)
         restart_dialog.title(f"重启任务 - {task_name} (ID: {task_id})")
-        restart_dialog.geometry("600x700")
+        restart_dialog.geometry("500x400")
         restart_dialog.transient(self.root)
         restart_dialog.grab_set()
-        
-        # 创建滚动区域
+
         main_frame = ttk.Frame(restart_dialog)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
-        
-        canvas = tk.Canvas(main_frame)
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
-        scrollable_frame = ttk.Frame(canvas)
-        
-        scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
-        
-        # 添加标题
-        ttk.Label(scrollable_frame, text="修改处理选项", font=("Arial", 12, "bold")).pack(pady=(0, 10))
-        
-        # 将API返回的选项转换为易于处理的格式
-        processing_options = {}
-        for option in processing_node_options:
-            option_name = option.get('name')
-            if not option_name:
-                continue
-                
-            option_type = option.get('type')
-            option_value = option.get('value')
-            option_domain = option.get('domain')
-            option_help = option.get('help', '')
-            
-            # 确定选项类型和默认值
-            widget_type = "string"
-            default_value = option_value
-            options_list = []
-            
-            if option_type == "bool":
-                widget_type = "bool"
-                default_value = option_value.lower() == "true" if isinstance(option_value, str) else bool(option_value)
-            elif option_type == "int":
-                widget_type = "int"
-                try:
-                    default_value = int(option_value) if option_value else 0
-                except (ValueError, TypeError):
-                    default_value = 0
-            elif option_type == "float" or option_type == "percent":
-                widget_type = "float"
-                try:
-                    default_value = float(option_value) if option_value else 0.0
-                except (ValueError, TypeError):
-                    default_value = 0.0
-            elif option_type == "enum" and isinstance(option_domain, list):
-                widget_type = "select"
-                options_list = option_domain
-                default_value = option_value if option_value in option_domain else (option_domain[0] if option_domain else "")
-            
-            # 创建选项字典
-            processing_options[option_name] = {
-                "label": option_name,
-                "type": widget_type,
-                "default": default_value,
-                "current": None,
-                "options": options_list,
-                "help": option_help
-            }
-        
-        # 如果API没有返回选项，使用默认选项
-        if not processing_options:
-            processing_options = {
-                "mesh-octree-depth": {"label": "网格八叉树深度", "type": "int", "default": 11, "current": None},
-                "mesh-size": {"label": "网格大小", "type": "int", "default": 200000, "current": None},
-                "min-num-features": {"label": "最小特征数", "type": "int", "default": 8000, "current": None},
-                "orthophoto-resolution": {"label": "正射影像分辨率", "type": "float", "default": 2, "current": None},
-                "pc-quality": {"label": "点云质量", "type": "select", "default": "medium", "current": None, 
-                              "options": ["ultra", "high", "medium", "low", "lowest"]},
-                "pc-filter": {"label": "点云过滤", "type": "int", "default": 2, "current": None},
-                "dsm": {"label": "生成DSM", "type": "bool", "default": True, "current": None},
-                "dtm": {"label": "生成DTM", "type": "bool", "default": False, "current": None},
-                "cog": {"label": "生成COG格式", "type": "bool", "default": False, "current": None},
-                "dem-resolution": {"label": "DEM分辨率", "type": "float", "default": 2, "current": None},
-                "feature-quality": {"label": "特征质量", "type": "select", "default": "medium", "current": None,
-                                   "options": ["ultra", "high", "medium", "low", "lowest"]},
-                "use-3dmesh": {"label": "使用3D网格", "type": "bool", "default": False, "current": None},
-            }
-        
-        # 解析当前选项
-        for opt in current_options:
-            if isinstance(opt, str) and '=' in opt:
-                key, value = opt.split('=', 1)
-                if key in processing_options:
-                    if processing_options[key]["type"] == "bool":
-                        processing_options[key]["current"] = value.lower() == "true"
-                    elif processing_options[key]["type"] == "int":
-                        try:
-                            processing_options[key]["current"] = int(value)
-                        except ValueError:
-                            pass
-                    elif processing_options[key]["type"] == "float":
-                        try:
-                            processing_options[key]["current"] = float(value)
-                        except ValueError:
-                            pass
-                    else:
-                        processing_options[key]["current"] = value
-        
-        self.status_var.set("就绪")
-        
-        # 创建选项控件
-        option_vars = {}
-        
-        # 创建分类标签
-        categories = {
-            "基本设置": ["end-with", "rerun-from", "min-num-features", "feature-type", "feature-quality", "matcher-type"],
-            "点云设置": ["pc-quality", "pc-filter", "pc-classify", "pc-rectify", "pc-geometric"],
-            "网格设置": ["mesh-size", "mesh-octree-depth", "mesh-samples", "mesh-point-weight", "use-3dmesh"],
-            "正射影像设置": ["orthophoto-resolution", "orthophoto-no-tiled", "orthophoto-png", "orthophoto-compression", "cog"],
-            "DEM设置": ["dem-resolution", "dem-gapfill-steps", "dsm", "dtm", "dem-euclidean-map"],
-            "相机设置": ["use-fixed-camera-params", "cameras", "camera-lens", "radiometric-calibration"],
-            "其他设置": []
-        }
-        
-        # 创建分类选项卡
-        tab_control = ttk.Notebook(scrollable_frame)
-        tab_control.pack(fill=tk.BOTH, expand=True, pady=10)
-        
-        # 创建所有选项的字典，用于分类
-        all_options = {}
-        for key, option in processing_options.items():
-            all_options[key] = option
-        
-        # 创建分类选项卡
-        tabs = {}
-        for category, option_keys in categories.items():
-            tab = ttk.Frame(tab_control)
-            tabs[category] = tab
-            tab_control.add(tab, text=category)
-        
-        # 添加未分类的选项到"其他设置"选项卡
-        for key in all_options.keys():
-            found = False
-            for category, option_keys in categories.items():
-                if key in option_keys:
-                    found = True
-                    break
-            if not found:
-                categories["其他设置"].append(key)
-        
-        # 为每个分类创建选项控件
-        for category, option_keys in categories.items():
-            tab = tabs[category]
-            
-            # 如果该分类没有选项，添加提示信息
-            if not option_keys:
-                ttk.Label(tab, text="没有可用的选项").pack(pady=20)
-                continue
-            
-            # 创建选项控件
-            for key in option_keys:
-                if key not in all_options:
-                    continue
-                    
-                option = all_options[key]
-                
-                # 创建选项框架
-                option_frame = ttk.Frame(tab)
-                option_frame.pack(fill=tk.X, pady=5, padx=10)
-                
-                # 创建选项标签和控件
-                label_frame = ttk.Frame(option_frame)
-                label_frame.pack(fill=tk.X, side=tk.TOP)
-                
-                # 显示选项名称
-                option_label = option.get("label", key)
-                label_text = f"{option_label}"
-                ttk.Label(label_frame, text=label_text).pack(side=tk.LEFT, anchor="w")
-                
-                # 创建控件框架
-                control_frame = ttk.Frame(option_frame)
-                control_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 0))
-                
-                # 根据选项类型创建不同的控件
-                if option["type"] == "bool":
-                    var = tk.BooleanVar(value=option["current"] if option["current"] is not None else option["default"])
-                    ttk.Checkbutton(control_frame, variable=var).pack(side=tk.LEFT)
-                elif option["type"] == "select":
-                    var = tk.StringVar(value=option["current"] if option["current"] is not None else option["default"])
-                    ttk.Combobox(control_frame, textvariable=var, values=option["options"], state="readonly", width=30).pack(side=tk.LEFT)
-                else:  # int, float, string
-                    var = tk.StringVar(value=str(option["current"] if option["current"] is not None else option["default"]))
-                    ttk.Entry(control_frame, textvariable=var, width=30).pack(side=tk.LEFT)
-                
-                # 添加帮助文本
-                if "help" in option and option["help"]:
-                    help_frame = ttk.Frame(option_frame)
-                    help_frame.pack(fill=tk.X, side=tk.TOP, pady=(2, 5))
-                    
-                    help_text = option["help"]
-                    # 替换帮助文本中的占位符
-                    help_text = help_text.replace("%(default)s", str(option["default"]))
-                    if "options" in option and option["options"]:
-                        help_text = help_text.replace("%(choices)s", ", ".join(option["options"]))
-                    
-                    help_label = ttk.Label(help_frame, text=help_text, wraplength=500, foreground="gray")
-                    help_label.pack(side=tk.LEFT, anchor="w")
-                
-                # 添加分隔线
-                ttk.Separator(option_frame, orient="horizontal").pack(fill=tk.X, pady=(5, 0))
-                
-                option_vars[key] = var
-        
-        # 按钮区域
+
+        ttk.Label(main_frame, text="请选择预设:", font=("TkDefaultFont", 10, "bold")).pack(pady=(0, 10), anchor=tk.W)
+
+        preset_name_map = {p.get('name', f"预设_{p.get('id')}"): p for p in presets}
+        preset_names = list(preset_name_map.keys())
+        default_preset_name = next((name for name in preset_names if name.lower() == 'default'), preset_names[0])
+
+        selected_preset_var = tk.StringVar(value=default_preset_name)
+        selector_frame = ttk.Frame(main_frame)
+        selector_frame.pack(fill=tk.X, pady=5)
+        ttk.Label(selector_frame, text="预设:").pack(side=tk.LEFT, padx=(0, 5))
+        preset_select = ttk.Combobox(selector_frame, textvariable=selected_preset_var, values=preset_names, state="readonly", width=30)
+        preset_select.pack(side=tk.LEFT)
+
+        details_group = ttk.LabelFrame(main_frame, text="预设选项 (只读)")
+        details_group.pack(fill=tk.BOTH, expand=True, pady=10)
+        details_text = tk.Text(details_group, height=10, width=60)
+        details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
+
+        def render_details():
+            details_text.config(state="normal")
+            details_text.delete("1.0", tk.END)
+            preset = preset_name_map.get(selected_preset_var.get())
+            if preset and isinstance(preset.get('options'), list):
+                for opt in preset['options']:
+                    details_text.insert(tk.END, f"{opt.get('name')} = {opt.get('value')}\n")
+            details_text.config(state="disabled")
+
+        preset_select.bind("<<ComboboxSelected>>", lambda e: render_details())
+        render_details()
+
         button_frame = ttk.Frame(restart_dialog)
         button_frame.pack(fill=tk.X, pady=10)
-        
+
         def do_restart():
-            # 收集选项
+            preset = preset_name_map.get(selected_preset_var.get())
+            if not preset:
+                messagebox.showerror("错误", "请选择有效的预设")
+                return
             options = {}
-            for key, var in option_vars.items():
-                option_info = processing_options.get(key, {})
-                opt_type = option_info.get("type", "string")
-                raw_value = var.get()
-                try:
-                    if opt_type == "bool":
-                        options[key] = self._parse_bool_value(raw_value)
-                    elif opt_type == "int":
-                        options[key] = int(str(raw_value).strip())
-                    elif opt_type == "float":
-                        options[key] = float(str(raw_value).strip())
-                    else:
-                        options[key] = str(raw_value).strip()
-                except ValueError:
-                    label = option_info.get("label", key)
-                    if opt_type == "bool":
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的布尔值")
-                    elif opt_type == "int":
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的整数")
-                    elif opt_type == "float":
-                        messagebox.showerror("错误", f"选项 {label} 需要有效的浮点数")
-                    else:
-                        messagebox.showerror("错误", f"选项 {label} 值无效")
-                    return
-            
-            options = self._clean_option_values(options)
-            
+            for opt in preset.get('options', []):
+                name = opt.get('name')
+                if not name:
+                    continue
+                options[name] = opt.get('value')
             restart_dialog.destroy()
-            
-            # 开始重启任务
+
             self.status_var.set(f"正在重启任务 {task_id}...")
             self.root.config(cursor="wait")
-            
+
             def restart_thread():
                 success = self.api.restart_task(self.current_project_id, task_id, options)
-                
                 if success:
                     self.root.after(0, lambda: self.status_var.set(f"任务 {task_id} 重启成功"))
                     self.root.after(0, lambda: self.load_tasks())
                 else:
                     self.root.after(0, lambda: self.status_var.set(f"任务 {task_id} 重启失败"))
                     self.root.after(0, lambda: messagebox.showerror("错误", f"重启任务 {task_id} 失败"))
-                
                 self.root.after(0, lambda: self.root.config(cursor=""))
-            
-            # 启动重启线程
+
             threading.Thread(target=restart_thread).start()
-        
+
         ttk.Button(button_frame, text="重启", command=do_restart).pack(side=tk.RIGHT, padx=5)
         ttk.Button(button_frame, text="取消", command=restart_dialog.destroy).pack(side=tk.RIGHT, padx=5)
