@@ -19,7 +19,36 @@ status_map = {
     50: "已取消"
 }
 
-VERSION = "1.3.1"
+def _read_project_version() -> str:
+    """读取项目版本号
+    
+    功能:
+        从与本文件同目录的 `pyproject.toml` 中解析并返回 `project.version` 字段，
+        如果解析失败则返回空字符串。
+    传入参数:
+        无
+    返回值:
+        str: 成功解析则返回版本号字符串（例如 "1.3.5"），否则返回空字符串
+    """
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+        toml_path = os.path.join(base_dir, "pyproject.toml")
+        if not os.path.exists(toml_path):
+            return ""
+        # Python 3.11+ 自带 tomllib，旧版用 tomli
+        try:
+            import tomllib
+            with open(toml_path, "rb") as f:
+                data = tomllib.load(f)
+        except ImportError:
+            import tomli
+            with open(toml_path, "rb") as f:
+                data = tomli.load(f)
+        return str(data.get("project", {}).get("version", ""))
+    except Exception:
+        return ""
+
+VERSION = _read_project_version() or "1.3.1"
 
 class WebODMClientUI:
     """WebODM客户端UI类，使用Tkinter实现用户界面"""
