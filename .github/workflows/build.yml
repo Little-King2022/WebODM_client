@@ -1,0 +1,45 @@
+name: Build Windows EXE
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Read version from pyproject.toml
+      id: get_version
+      shell: bash
+      run: |
+        VERSION=$(grep -E '^version =' pyproject.toml | sed -E 's/version = "(.*)"/\1/')
+        echo "VERSION=$VERSION" >> $GITHUB_ENV
+        echo "version=$VERSION"
+
+    - name: Install Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        pip install pyinstaller
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+
+    - name: Build EXE
+      run: |
+        pyinstaller --noconsole --onefile main.py
+        mv dist/main.exe "dist/WebODM_client-v${{ env.VERSION }}.exe"
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: dist/*.exe
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
