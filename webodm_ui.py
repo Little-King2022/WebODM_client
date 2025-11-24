@@ -231,11 +231,11 @@ class WebODMClientUI:
                                           yscrollcommand=scrollbar_y.set)
         
         # 设置列标题
-        self.tasks_treeview.heading("id", text="ID")
-        self.tasks_treeview.heading("name", text="名称")
-        self.tasks_treeview.heading("created_at", text="创建时间")
-        self.tasks_treeview.heading("status", text="状态")
-        self.tasks_treeview.heading("processing_time", text="处理时间")
+        self.tasks_treeview.heading("id", text="ID", command=lambda: self.sort_tasks_by("id"))
+        self.tasks_treeview.heading("name", text="名称", command=lambda: self.sort_tasks_by("name"))
+        self.tasks_treeview.heading("created_at", text="创建时间", command=lambda: self.sort_tasks_by("created_at"))
+        self.tasks_treeview.heading("status", text="状态", command=lambda: self.sort_tasks_by("status"))
+        self.tasks_treeview.heading("processing_time", text="处理时间", command=lambda: self.sort_tasks_by("processing_time"))
         
         # 设置列宽
         self.tasks_treeview.column("id", width=50)
@@ -255,6 +255,7 @@ class WebODMClientUI:
         # 任务数据
         self.tasks_data = []
         self.current_project_id = None
+        self.tasks_sort_state = {"id": True, "name": True, "created_at": True, "status": True, "processing_time": True}
     
     def create_status_bar(self):
         """创建状态栏"""
@@ -710,16 +711,79 @@ class WebODMClientUI:
                 minutes = (total_seconds % 3600) // 60
                 seconds = total_seconds % 60
                 processing_time = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            created_local = self._format_to_local_time(task.get('created_at', ""))
             
             self.tasks_treeview.insert("", tk.END, values=(
                 task.get('id', ""),
                 task.get('name', "未命名"),
-                task.get('created_at', ""),
+                created_local,
                 status,
                 processing_time
             ))
         
         self.status_var.set(f"已加载 {len(tasks)} 个任务")
+
+    def sort_tasks_by(self, column: str):
+        """按指定列排序任务列表，支持升/降序切换
+        
+        Args:
+            column: 列名，可为 'id'、'name'、'created_at'、'status'、'processing_time'
+        Returns:
+            无
+        """
+        ascending = self.tasks_sort_state.get(column, True)
+        def key_func(t: Dict[str, Any]):
+            if column == "id":
+                return str(t.get('id', 0))
+            if column == "name":
+                return str(t.get('name', "")).lower()
+            if column == "created_at":
+                dt = self._parse_utc_to_local_dt(t.get('created_at', ""))
+                return dt.timestamp() if dt else 0.0
+            if column == "status":
+                return str(status_map.get(t.get('status', 0), "")).lower()
+            if column == "processing_time":
+                try:
+                    return int(t.get('processing_time', 0))
+                except Exception:
+                    return 0
+            return str(t.get(column, ""))
+        sorted_tasks = sorted(self.tasks_data, key=key_func, reverse=not ascending)
+        self.tasks_sort_state[column] = not ascending
+        self.update_tasks_list(sorted_tasks)
+
+    def _parse_utc_to_local_dt(self, utc_str: str) -> Optional[datetime]:
+        """将UTC时间字符串解析并转换为本地时区的datetime
+        
+        Args:
+            utc_str: UTC时间字符串，如 '2025-10-17T05:12:51.583409Z' 或 '2025-10-17T05:12:51Z'
+        Returns:
+            datetime: 本地时区的datetime；若解析失败返回None
+        """
+        if not utc_str:
+            return None
+        try:
+            dt = datetime.strptime(utc_str, '%Y-%m-%dT%H:%M:%S.%fZ')
+        except Exception:
+            try:
+                dt = datetime.strptime(utc_str, '%Y-%m-%dT%H:%M:%SZ')
+            except Exception:
+                return None
+        dt = dt.replace(tzinfo=pytz.UTC)
+        return dt.astimezone()
+
+    def _format_to_local_time(self, utc_str: str) -> str:
+        """将UTC时间字符串格式化为本地时间字符串 'YYYY-MM-DD HH:MM:SS'
+        
+        Args:
+            utc_str: UTC时间字符串
+        Returns:
+            str: 本地时间格式化字符串；解析失败返回原字符串或空串
+        """
+        dt = self._parse_utc_to_local_dt(utc_str)
+        if not dt:
+            return str(utc_str or "")
+        return dt.strftime('%Y-%m-%d %H:%M:%S')
     
     def on_task_double_click(self, *args):
         """任务双击事件处理
@@ -769,7 +833,7 @@ class WebODMClientUI:
         for label, value in [
             ("ID", task.get('id', "")),
             ("名称", task.get('name', "未命名")),
-            ("创建时间", task.get('created_at', "")),
+            ("创建时间", self._format_to_local_time(task.get('created_at', ""))),
             ("状态", status_map.get(task.get('status', 0), "未知")),
             ("处理时间", f"{int(task.get('processing_time', 0)/1000//3600):02d}:{int((task.get('processing_time', 0)/1000%3600)//60):02d}:{int((task.get('processing_time', 0)/1000)%60):02d}" if task.get('processing_time') else "-"),
             ("可用资源", "\n".join(task.get('available_assets', [])))

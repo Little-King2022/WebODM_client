@@ -1,4 +1,4 @@
-# WebODM Client (v1.3.1)
+# WebODM Client (v1.3.2)
 <img width="1252" height="940" alt="image" src="https://github.com/user-attachments/assets/bad42984-ae9c-4026-82b6-55766fb1b76e" />
 
 A Python and Tkinter-based [WebODM](https://github.com/OpenDroneMap/WebODM) client for batch management of projects and image stitching tasks in WebODM.
