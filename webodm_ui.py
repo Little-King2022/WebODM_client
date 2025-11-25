@@ -113,7 +113,7 @@ class WebODMClientUI:
                 with open(config_path, 'r') as f:
                     return json.load(f)
             except Exception as e:
-                print(f"加载配置文件错误: {str(e)}")
+                print(f"Error loading config file: {str(e)}")
         return {}
     
     def save_config(self):
@@ -123,7 +123,7 @@ class WebODMClientUI:
             with open(config_path, 'w') as f:
                 json.dump(self.config, f)
         except Exception as e:
-            print(f"保存配置文件错误: {str(e)}")
+            print(f"Error saving config file: {str(e)}")
     
     def create_menu(self):
         """创建菜单栏"""

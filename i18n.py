@@ -197,7 +197,7 @@ ZH_CN: Dict[str, str] = {
     
     # About dialog
     "about_title": "关于",
-    "about_text": "WebODM 客户端{version}\n\nhttps://github.com/Little-King2022/WebODM_client\n\n基于Python和Tkinter的 WebODM(https://github.com/OpenDroneMap/WebODM) 客户端，用于批量管理WebODM中的项目和图片拼接任务",
+    "about_text": "WebODM 客户端 {version}\n\nhttps://github.com/Little-King2022/WebODM_client\n\n基于Python和Tkinter的 WebODM(https://github.com/OpenDroneMap/WebODM) 客户端，用于批量管理WebODM中的项目和图片拼接任务",
     
     # Language names
     "lang_zh_cn": "中文",
