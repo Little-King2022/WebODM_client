@@ -275,14 +275,14 @@ class WebODMAPI:
             task_info = response.json()
             task_id = task_info.get('id')
             if not task_id:
-                print("创建任务失败: 返回数据中缺少任务ID")
+                print("Failed to create task: Missing task ID in response")
                 return None
             
             uploaded = 0
             for image_path in valid_images:
                 filename = os.path.basename(image_path)
                 if progress_callback:
-                    progress_callback(uploaded, total_images, f"正在上传 {filename}...")
+                    progress_callback(uploaded, total_images, f"Uploading {filename}...")
                 
                 success = self.upload_task_image(project_id, task_id, image_path)
                 if not success:
@@ -291,10 +291,10 @@ class WebODMAPI:
                 
                 uploaded += 1
                 if progress_callback:
-                    progress_callback(uploaded, total_images, f"已上传 {filename}")
+                    progress_callback(uploaded, total_images, f"Uploaded {filename}")
             
             if progress_callback:
-                progress_callback(total_images, total_images, "正在提交任务...")
+                progress_callback(total_images, total_images, "Submitting task...")
             
             commit_result = self.commit_task(project_id, task_id)
             if not commit_result:
@@ -612,9 +612,9 @@ class WebODMAPI:
             if status == 30:  # COMPLETED
                 return task_info
             elif status == 40:  # FAILED
-                raise Exception(f"任务失败: {task_info}")
+                raise Exception(f"Task failed: {task_info}")
             elif status == 50:  # CANCELED
-                raise Exception(f"任务已取消: {task_info}")
+                raise Exception(f"Task canceled: {task_info}")
             
-            print(f"任务处理中，状态: {status}")
+            print(f"Task processing, status: {status}")
             time.sleep(check_interval)
