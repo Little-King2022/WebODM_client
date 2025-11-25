@@ -10,14 +10,18 @@ import re
 from webodm_api import WebODMAPI
 from datetime import datetime
 import pytz
+from i18n import get_i18n, set_language, t, I18n
 
-status_map = {
-    10: "队列中",
-    20: "运行中",
-    30: "失败",
-    40: "已完成",
-    50: "已取消"
-}
+
+def get_status_map() -> Dict[int, str]:
+    """Get status map with translated values."""
+    return {
+        10: t("status_queued"),
+        20: t("status_running"),
+        30: t("status_failed"),
+        40: t("status_completed"),
+        50: t("status_canceled")
+    }
 
 def _read_project_version() -> str:
     """读取项目版本号
@@ -60,7 +64,6 @@ class WebODMClientUI:
             root: Tkinter根窗口
         """
         self.root = root
-        self.root.title(f"WebODM 客户端 {VERSION}")
         self.root.geometry("1000x700")
         self.root.minsize(800, 600)
         
@@ -73,6 +76,14 @@ class WebODMClientUI:
         
         # 加载配置
         self.config = self.load_config()
+        
+        # 设置语言
+        self.i18n = get_i18n()
+        if 'language' in self.config:
+            set_language(self.config['language'])
+        
+        # 设置窗口标题
+        self.root.title(f"{t('window_title')} {VERSION}")
         
         # 创建UI组件
         self.create_menu()
@@ -120,20 +131,43 @@ class WebODMClientUI:
         
         # 文件菜单
         file_menu = tk.Menu(self.menu_bar, tearoff=0)
-        file_menu.add_command(label="退出", command=self.root.quit)
-        self.menu_bar.add_cascade(label="文件", menu=file_menu)
+        file_menu.add_command(label=t("menu_exit"), command=self.root.quit)
+        self.menu_bar.add_cascade(label=t("menu_file"), menu=file_menu)
         
         # 设置菜单
         settings_menu = tk.Menu(self.menu_bar, tearoff=0)
-        settings_menu.add_command(label="服务器设置", command=self.show_server_settings)
-        self.menu_bar.add_cascade(label="设置", menu=settings_menu)
+        settings_menu.add_command(label=t("menu_server_settings"), command=self.show_server_settings)
+        
+        # 语言子菜单
+        language_menu = tk.Menu(settings_menu, tearoff=0)
+        language_menu.add_command(label=t("lang_zh_cn"), command=lambda: self.change_language("zh_CN"))
+        language_menu.add_command(label=t("lang_en"), command=lambda: self.change_language("en"))
+        settings_menu.add_cascade(label=t("menu_language"), menu=language_menu)
+        
+        self.menu_bar.add_cascade(label=t("menu_settings"), menu=settings_menu)
         
         # 帮助菜单
         help_menu = tk.Menu(self.menu_bar, tearoff=0)
-        help_menu.add_command(label="关于", command=self.show_about)
-        self.menu_bar.add_cascade(label="帮助", menu=help_menu)
+        help_menu.add_command(label=t("menu_about"), command=self.show_about)
+        self.menu_bar.add_cascade(label=t("menu_help"), menu=help_menu)
         
         self.root.config(menu=self.menu_bar)
+    
+    def change_language(self, language: str):
+        """切换界面语言
+        
+        Args:
+            language: 语言代码 (zh_CN 或 en)
+        """
+        set_language(language)
+        self.config['language'] = language
+        self.save_config()
+        
+        # 提示用户需要重启
+        messagebox.showinfo(
+            t("menu_language"),
+            "Language changed. Please restart the application for changes to take effect.\n\n语言已更改，请重启应用程序以使更改生效。"
+        )
     
     def create_main_frame(self):
         """创建主框架"""
@@ -152,33 +186,33 @@ class WebODMClientUI:
     
     def create_connection_frame(self):
         """创建连接框架"""
-        connection_frame = ttk.LabelFrame(self.main_frame, text="服务器连接", padding="10")
+        connection_frame = ttk.LabelFrame(self.main_frame, text=t("server_connection"), padding="10")
         connection_frame.pack(fill=tk.X, pady=(0, 10))
         
         # 服务器地址
         server_frame = ttk.Frame(connection_frame)
         server_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Label(server_frame, text="服务器地址:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(server_frame, text=t("server_address")).pack(side=tk.LEFT, padx=(0, 5))
         
         self.server_url_var = tk.StringVar(value="http://localhost:8000")
         server_entry = ttk.Entry(server_frame, textvariable=self.server_url_var, width=40)
         server_entry.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 10))
         
         # 登录按钮
-        self.login_button = ttk.Button(server_frame, text="登录", command=self.login)
+        self.login_button = ttk.Button(server_frame, text=t("login"), command=self.login)
         self.login_button.pack(side=tk.LEFT, padx=5)
         
-        self.logout_button = ttk.Button(server_frame, text="注销", command=self.logout, state=tk.DISABLED)
+        self.logout_button = ttk.Button(server_frame, text=t("logout"), command=self.logout, state=tk.DISABLED)
         self.logout_button.pack(side=tk.LEFT)
         
         # 登录状态
         status_frame = ttk.Frame(connection_frame)
         status_frame.pack(fill=tk.X, pady=5)
         
-        ttk.Label(status_frame, text="状态:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(status_frame, text=t("status")).pack(side=tk.LEFT, padx=(0, 5))
         
-        self.login_status_var = tk.StringVar(value="未连接")
+        self.login_status_var = tk.StringVar(value=t("not_connected"))
         ttk.Label(status_frame, textvariable=self.login_status_var).pack(side=tk.LEFT)
     
     def create_projects_tasks_frame(self):
@@ -195,16 +229,16 @@ class WebODMClientUI:
     
     def create_projects_frame(self):
         """创建项目框架"""
-        projects_frame = ttk.LabelFrame(self.paned_window, text="项目列表")
+        projects_frame = ttk.LabelFrame(self.paned_window, text=t("project_list"))
         self.paned_window.add(projects_frame, weight=1)
         
         # 项目工具栏
         projects_toolbar = ttk.Frame(projects_frame)
         projects_toolbar.pack(fill=tk.X, pady=5, padx=5)
         
-        ttk.Button(projects_toolbar, text="刷新", command=self.load_projects).pack(side=tk.LEFT, padx=2)
-        ttk.Button(projects_toolbar, text="新建项目", command=self.create_new_project).pack(side=tk.LEFT, padx=2)
-        ttk.Button(projects_toolbar, text="查看详情", command=self.view_project_details).pack(side=tk.LEFT, padx=2)
+        ttk.Button(projects_toolbar, text=t("refresh"), command=self.load_projects).pack(side=tk.LEFT, padx=2)
+        ttk.Button(projects_toolbar, text=t("new_project"), command=self.create_new_project).pack(side=tk.LEFT, padx=2)
+        ttk.Button(projects_toolbar, text=t("view_details"), command=self.view_project_details).pack(side=tk.LEFT, padx=2)
         
         # 项目列表
         projects_list_frame = ttk.Frame(projects_frame)
@@ -227,20 +261,20 @@ class WebODMClientUI:
     
     def create_tasks_frame(self):
         """创建任务框架"""
-        tasks_frame = ttk.LabelFrame(self.paned_window, text="任务列表")
+        tasks_frame = ttk.LabelFrame(self.paned_window, text=t("task_list"))
         self.paned_window.add(tasks_frame, weight=2)
         
         # 任务工具栏
         tasks_toolbar = ttk.Frame(tasks_frame)
         tasks_toolbar.pack(fill=tk.X, pady=5, padx=5)
         
-        ttk.Button(tasks_toolbar, text="刷新", command=self.load_tasks).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tasks_toolbar, text="新建任务", command=self.create_new_task).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tasks_toolbar, text="下载资源", command=self.download_assets).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tasks_toolbar, text="重启任务", command=self.restart_tasks).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tasks_toolbar, text="取消任务", command=self.cancel_tasks).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tasks_toolbar, text="删除任务", command=self.remove_tasks).pack(side=tk.LEFT, padx=2)
-        ttk.Button(tasks_toolbar, text="查看详情", command=self.on_task_double_click).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tasks_toolbar, text=t("refresh"), command=self.load_tasks).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tasks_toolbar, text=t("new_task"), command=self.create_new_task).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tasks_toolbar, text=t("download_assets"), command=self.download_assets).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tasks_toolbar, text=t("restart_tasks"), command=self.restart_tasks).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tasks_toolbar, text=t("cancel_tasks"), command=self.cancel_tasks).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tasks_toolbar, text=t("delete_tasks"), command=self.remove_tasks).pack(side=tk.LEFT, padx=2)
+        ttk.Button(tasks_toolbar, text=t("view_details"), command=self.on_task_double_click).pack(side=tk.LEFT, padx=2)
         
         # 任务列表
         tasks_list_frame = ttk.Frame(tasks_frame)
@@ -260,11 +294,11 @@ class WebODMClientUI:
                                           yscrollcommand=scrollbar_y.set)
         
         # 设置列标题
-        self.tasks_treeview.heading("id", text="ID", command=lambda: self.sort_tasks_by("id"))
-        self.tasks_treeview.heading("name", text="名称", command=lambda: self.sort_tasks_by("name"))
-        self.tasks_treeview.heading("created_at", text="创建时间", command=lambda: self.sort_tasks_by("created_at"))
-        self.tasks_treeview.heading("status", text="状态", command=lambda: self.sort_tasks_by("status"))
-        self.tasks_treeview.heading("processing_time", text="处理时间", command=lambda: self.sort_tasks_by("processing_time"))
+        self.tasks_treeview.heading("id", text=t("col_id"), command=lambda: self.sort_tasks_by("id"))
+        self.tasks_treeview.heading("name", text=t("col_name"), command=lambda: self.sort_tasks_by("name"))
+        self.tasks_treeview.heading("created_at", text=t("col_created_at"), command=lambda: self.sort_tasks_by("created_at"))
+        self.tasks_treeview.heading("status", text=t("col_status"), command=lambda: self.sort_tasks_by("status"))
+        self.tasks_treeview.heading("processing_time", text=t("col_processing_time"), command=lambda: self.sort_tasks_by("processing_time"))
         
         # 设置列宽
         self.tasks_treeview.column("id", width=50)
@@ -292,13 +326,13 @@ class WebODMClientUI:
         self.status_bar.pack(side=tk.BOTTOM, fill=tk.X)
         
         self.status_var = tk.StringVar()
-        self.status_var.set("就绪")
+        self.status_var.set(t("ready"))
         status_label = ttk.Label(self.status_bar, textvariable=self.status_var, anchor=tk.W)
         status_label.pack(side=tk.LEFT, fill=tk.X, expand=True)
     
     def show_server_settings(self):
         """显示服务器设置对话框"""
-        server_url = simpledialog.askstring("服务器设置", "请输入WebODM服务器地址:",
+        server_url = simpledialog.askstring(t("server_settings_title"), t("server_settings_prompt"),
                                          initialvalue=self.server_url_var.get())
         if server_url:
             self.server_url_var.set(server_url)
@@ -307,7 +341,7 @@ class WebODMClientUI:
     
     def show_about(self):
         """显示关于对话框"""
-        messagebox.showinfo("关于", f"WebODM 客户端{VERSION}\n\nhttps://github.com/Little-King2022/WebODM_client\n\n基于Python和Tkinter的 WebODM(https://github.com/OpenDroneMap/WebODM) 客户端，用于批量管理WebODM中的项目和图片拼接任务")
+        messagebox.showinfo(t("about_title"), t("about_text", version=VERSION))
     
     def login(self):
         """登录WebODM服务器"""
@@ -316,7 +350,7 @@ class WebODMClientUI:
         
         # 创建登录对话框
         login_dialog = tk.Toplevel(self.root)
-        login_dialog.title("登录")
+        login_dialog.title(t("login_title"))
         login_dialog.geometry("300x150")
         login_dialog.resizable(False, False)
         login_dialog.transient(self.root)
@@ -327,11 +361,11 @@ class WebODMClientUI:
         y = (login_dialog.winfo_screenheight() - login_dialog.winfo_height()) // 2
         login_dialog.geometry(f"+{x}+{y}")
         
-        ttk.Label(login_dialog, text="用户名:").grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+        ttk.Label(login_dialog, text=t("username")).grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
         username_var = tk.StringVar()
         ttk.Entry(login_dialog, textvariable=username_var, width=20).grid(row=0, column=1, padx=10, pady=10)
         
-        ttk.Label(login_dialog, text="密码:").grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
+        ttk.Label(login_dialog, text=t("password")).grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
         password_var = tk.StringVar()
         password_entry = ttk.Entry(login_dialog, textvariable=password_var, width=20, show="*")
         password_entry.grid(row=1, column=1, padx=10, pady=10)
@@ -341,10 +375,10 @@ class WebODMClientUI:
             password = password_var.get()
             
             if not username or not password:
-                messagebox.showerror("错误", "用户名和密码不能为空")
+                messagebox.showerror(t("error"), t("error_empty_credentials"))
                 return
             
-            self.status_var.set("正在登录...")
+            self.status_var.set(t("logging_in"))
             login_dialog.config(cursor="wait")
             self.root.config(cursor="wait")
             
@@ -363,7 +397,7 @@ class WebODMClientUI:
             
             threading.Thread(target=login_thread).start()
         
-        ttk.Button(login_dialog, text="登录", command=do_login).grid(row=2, column=0, columnspan=2, pady=10)
+        ttk.Button(login_dialog, text=t("login"), command=do_login).grid(row=2, column=0, columnspan=2, pady=10)
         
         # 设置回车键登录
         login_dialog.bind("<Return>", lambda event: do_login())
@@ -384,7 +418,7 @@ class WebODMClientUI:
         login_dialog.config(cursor="")
         
         if success:
-            self.status_var.set("登录成功")
+            self.status_var.set(t("login_success"))
             login_dialog.destroy()
             
             # 保存配置
@@ -398,8 +432,8 @@ class WebODMClientUI:
             # 加载项目列表
             self.load_projects()
         else:
-            self.status_var.set("登录失败")
-            messagebox.showerror("登录失败", "用户名或密码错误，或服务器无法连接")
+            self.status_var.set(t("login_failed"))
+            messagebox.showerror(t("login_failed"), t("login_failed_msg"))
     
     def logout(self):
         """注销登录"""
@@ -422,7 +456,7 @@ class WebODMClientUI:
         self.tasks_data = []
         self.current_project_id = None
         
-        self.status_var.set("已注销")
+        self.status_var.set(t("logged_out"))
     
     def update_login_status(self, logged_in: bool):
         """更新登录状态
@@ -431,21 +465,21 @@ class WebODMClientUI:
             logged_in: 是否已登录
         """
         if logged_in:
-            self.login_status_var.set("已连接")
+            self.login_status_var.set(t("connected"))
             self.login_button.config(state=tk.DISABLED)
             self.logout_button.config(state=tk.NORMAL)
         else:
-            self.login_status_var.set("未连接")
+            self.login_status_var.set(t("not_connected"))
             self.login_button.config(state=tk.NORMAL)
             self.logout_button.config(state=tk.DISABLED)
     
     def load_projects(self):
         """加载项目列表"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
-        self.status_var.set("正在加载项目列表...")
+        self.status_var.set(t("loading_projects"))
         self.root.config(cursor="wait")
         
         def load_thread():
@@ -472,7 +506,7 @@ class WebODMClientUI:
         for project in projects:
             self.projects_listbox.insert(tk.END, f"{project['name']}")
         
-        self.status_var.set(f"已加载 {len(projects)} 个项目")
+        self.status_var.set(t("projects_loaded", count=len(projects)))
     
     def on_project_selected(self, event):
         """项目选择事件处理
@@ -495,22 +529,22 @@ class WebODMClientUI:
     def create_new_project(self):
         """创建新项目"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         # 创建项目对话框
         project_dialog = tk.Toplevel(self.root)
-        project_dialog.title("新建项目")
+        project_dialog.title(t("new_project_title"))
         project_dialog.geometry("400x200")
         project_dialog.resizable(False, False)
         project_dialog.transient(self.root)
         project_dialog.grab_set()
         
-        ttk.Label(project_dialog, text="项目名称:").grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
+        ttk.Label(project_dialog, text=t("project_name")).grid(row=0, column=0, padx=10, pady=10, sticky=tk.W)
         name_var = tk.StringVar()
         ttk.Entry(project_dialog, textvariable=name_var, width=30).grid(row=0, column=1, padx=10, pady=10)
         
-        ttk.Label(project_dialog, text="项目描述:").grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
+        ttk.Label(project_dialog, text=t("project_description")).grid(row=1, column=0, padx=10, pady=10, sticky=tk.W)
         description_var = tk.StringVar()
         ttk.Entry(project_dialog, textvariable=description_var, width=30).grid(row=1, column=1, padx=10, pady=10)
         
@@ -519,10 +553,10 @@ class WebODMClientUI:
             description = description_var.get()
             
             if not name:
-                messagebox.showerror("错误", "项目名称不能为空")
+                messagebox.showerror(t("error"), t("error_empty_project_name"))
                 return
             
-            self.status_var.set("正在创建项目...")
+            self.status_var.set(t("creating_project"))
             project_dialog.config(cursor="wait")
             self.root.config(cursor="wait")
             
@@ -534,7 +568,7 @@ class WebODMClientUI:
             
             threading.Thread(target=create_thread).start()
         
-        ttk.Button(project_dialog, text="创建", command=do_create).grid(row=2, column=0, columnspan=2, pady=10)
+        ttk.Button(project_dialog, text=t("create"), command=do_create).grid(row=2, column=0, columnspan=2, pady=10)
         
         # 设置回车键创建
         project_dialog.bind("<Return>", lambda event: do_create())
@@ -550,25 +584,25 @@ class WebODMClientUI:
         project_dialog.config(cursor="")
         
         if project:
-            self.status_var.set("项目创建成功")
+            self.status_var.set(t("project_created"))
             project_dialog.destroy()
             
             # 重新加载项目列表
             self.load_projects()
         else:
-            self.status_var.set("项目创建失败")
-            messagebox.showerror("创建失败", "无法创建项目，请检查网络连接或服务器状态")
+            self.status_var.set(t("project_create_failed"))
+            messagebox.showerror(t("project_create_failed"), t("project_create_failed_msg"))
     
     def view_project_details(self):
         """查看项目详细信息"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         # 获取选中的项目
         selection = self.projects_listbox.curselection()
         if not selection:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
         index = selection[0]
@@ -576,7 +610,7 @@ class WebODMClientUI:
             project_id = self.projects_data[index]['id']
             
             # 显示加载状态
-            self.status_var.set("正在获取项目详情...")
+            self.status_var.set(t("getting_project_details"))
             self.root.config(cursor="wait")
             
             def load_thread():
@@ -595,15 +629,15 @@ class WebODMClientUI:
             project: 项目详细信息
         """
         self.root.config(cursor="")
-        self.status_var.set("就绪")
+        self.status_var.set(t("ready"))
         
         if not project:
-            messagebox.showerror("错误", "获取项目详情失败")
+            messagebox.showerror(t("error"), t("get_project_details_failed"))
             return
         
         # 创建项目详情对话框
         details_dialog = tk.Toplevel(self.root)
-        details_dialog.title(f"项目详情: {project['name']}")
+        details_dialog.title(f"{t('project_details')}: {project['name']}")
         details_dialog.geometry("600x300")
         details_dialog.transient(self.root)
         details_dialog.grab_set()
@@ -652,26 +686,26 @@ class WebODMClientUI:
         row = 0
         
         # 项目ID
-        ttk.Label(scrollable_frame, text="项目ID:", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(scrollable_frame, text=t("project_id"), font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
         ttk.Label(scrollable_frame, text=str(project['id'])).grid(row=row, column=1, sticky=tk.W, padx=5, pady=5)
         row += 1
         
         # 项目名称
-        ttk.Label(scrollable_frame, text="项目名称:", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(scrollable_frame, text=t("project_name"), font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
         ttk.Label(scrollable_frame, text=project['name']).grid(row=row, column=1, sticky=tk.W, padx=5, pady=5)
         row += 1
         
         # 项目描述
-        ttk.Label(scrollable_frame, text="项目描述:", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
-        description = project.get('description', '无')
+        ttk.Label(scrollable_frame, text=t("project_description"), font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
+        description = project.get('description', t("none"))
         ttk.Label(scrollable_frame, text=description, wraplength=400).grid(row=row, column=1, sticky=tk.W, padx=5, pady=5)
         row += 1
         
         # 创建时间
-        ttk.Label(scrollable_frame, text="创建时间:", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(scrollable_frame, text=t("created_at"), font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
         # 获取创建时间并转换为本地时间
-        created_at = project.get('created_at', '未知')
-        if created_at != '未知':
+        created_at = project.get('created_at', t("unknown"))
+        if created_at != t("unknown"):
             try:
                 # 将UTC时间字符串转换为datetime对象
                 utc_time = datetime.strptime(created_at, '%Y-%m-%dT%H:%M:%S.%fZ')
@@ -685,29 +719,29 @@ class WebODMClientUI:
         row += 1
         
         # 权限
-        ttk.Label(scrollable_frame, text="权限:", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(scrollable_frame, text=t("permissions"), font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=5)
         permissions = project.get('permissions', [])
         if permissions:
             permissions_text = ", ".join(permissions)
         else:
-            permissions_text = "无权限信息"
+            permissions_text = t("no_permissions")
         ttk.Label(scrollable_frame, text=permissions_text, wraplength=400).grid(row=row, column=1, sticky=tk.W, padx=5, pady=5)
         row += 1
         
         # 关闭按钮
-        ttk.Button(details_dialog, text="关闭", command=details_dialog.destroy).pack(pady=10)
+        ttk.Button(details_dialog, text=t("close"), command=details_dialog.destroy).pack(pady=10)
     
     def load_tasks(self):
         """加载任务列表"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
-        self.status_var.set("正在加载任务列表...")
+        self.status_var.set(t("loading_tasks"))
         self.root.config(cursor="wait")
         
         def load_thread():
@@ -730,9 +764,11 @@ class WebODMClientUI:
         self.tasks_treeview.delete(*self.tasks_treeview.get_children())
         self.tasks_data = tasks
         
+        status_map = get_status_map()
+        
         # 添加任务
         for task in tasks:
-            status = status_map.get(task.get('status', 0), "未知")
+            status = status_map.get(task.get('status', 0), t("status_unknown"))
             processing_time = "-"
             if task.get('processing_time'):
                 total_seconds = int(task.get('processing_time') / 1000)
@@ -744,13 +780,13 @@ class WebODMClientUI:
             
             self.tasks_treeview.insert("", tk.END, values=(
                 task.get('id', ""),
-                task.get('name', "未命名"),
+                task.get('name', t("unnamed")),
                 created_local,
                 status,
                 processing_time
             ))
         
-        self.status_var.set(f"已加载 {len(tasks)} 个任务")
+        self.status_var.set(t("tasks_loaded", count=len(tasks)))
 
     def sort_tasks_by(self, column: str):
         """按指定列排序任务列表，支持升/降序切换
@@ -761,22 +797,23 @@ class WebODMClientUI:
             无
         """
         ascending = self.tasks_sort_state.get(column, True)
-        def key_func(t: Dict[str, Any]):
+        status_map = get_status_map()
+        def key_func(task: Dict[str, Any]):
             if column == "id":
-                return str(t.get('id', 0))
+                return str(task.get('id', 0))
             if column == "name":
-                return str(t.get('name', "")).lower()
+                return str(task.get('name', "")).lower()
             if column == "created_at":
-                dt = self._parse_utc_to_local_dt(t.get('created_at', ""))
+                dt = self._parse_utc_to_local_dt(task.get('created_at', ""))
                 return dt.timestamp() if dt else 0.0
             if column == "status":
-                return str(status_map.get(t.get('status', 0), "")).lower()
+                return str(status_map.get(task.get('status', 0), "")).lower()
             if column == "processing_time":
                 try:
-                    return int(t.get('processing_time', 0))
+                    return int(task.get('processing_time', 0))
                 except Exception:
                     return 0
-            return str(t.get(column, ""))
+            return str(task.get(column, ""))
         sorted_tasks = sorted(self.tasks_data, key=key_func, reverse=not ascending)
         self.tasks_sort_state[column] = not ascending
         self.update_tasks_list(sorted_tasks)
@@ -843,9 +880,11 @@ class WebODMClientUI:
         Args:
             task: 任务信息
         """
+        status_map = get_status_map()
+        
         # 创建任务详情对话框
         details_dialog = tk.Toplevel(self.root)
-        details_dialog.title(f"任务详情 - {task.get('name', '未命名')}")
+        details_dialog.title(f"{t('task_details')} - {task.get('name', t('unnamed'))}")
         details_dialog.geometry("600x400")
         details_dialog.transient(self.root)
         
@@ -855,17 +894,17 @@ class WebODMClientUI:
         
         # 基本信息选项卡
         info_frame = ttk.Frame(notebook, padding=10)
-        notebook.add(info_frame, text="基本信息")
+        notebook.add(info_frame, text=t("basic_info"))
         
         # 显示基本信息
         row = 0
         for label, value in [
-            ("ID", task.get('id', "")),
-            ("名称", task.get('name', "未命名")),
-            ("创建时间", self._format_to_local_time(task.get('created_at', ""))),
-            ("状态", status_map.get(task.get('status', 0), "未知")),
-            ("处理时间", f"{int(task.get('processing_time', 0)/1000//3600):02d}:{int((task.get('processing_time', 0)/1000%3600)//60):02d}:{int((task.get('processing_time', 0)/1000)%60):02d}" if task.get('processing_time') else "-"),
-            ("可用资源", "\n".join(task.get('available_assets', [])))
+            (t("col_id"), task.get('id', "")),
+            (t("col_name"), task.get('name', t("unnamed"))),
+            (t("col_created_at"), self._format_to_local_time(task.get('created_at', ""))),
+            (t("col_status"), status_map.get(task.get('status', 0), t("status_unknown"))),
+            (t("col_processing_time"), f"{int(task.get('processing_time', 0)/1000//3600):02d}:{int((task.get('processing_time', 0)/1000%3600)//60):02d}:{int((task.get('processing_time', 0)/1000)%60):02d}" if task.get('processing_time') else "-"),
+            (t("available_assets"), "\n".join(task.get('available_assets', [])))
         ]:
             ttk.Label(info_frame, text=f"{label}:", font=("TkDefaultFont", 10, "bold")).grid(row=row, column=0, sticky=tk.W, padx=5, pady=2)
             ttk.Label(info_frame, text=str(value)).grid(row=row, column=1, sticky=tk.W, padx=5, pady=2)
@@ -874,7 +913,7 @@ class WebODMClientUI:
         # 选项选项卡
         if 'options' in task and task['options']:
             options_frame = ttk.Frame(notebook, padding=10)
-            notebook.add(options_frame, text="处理选项")
+            notebook.add(options_frame, text=t("processing_options"))
             
             # 显示选项
             row = 0
@@ -889,13 +928,13 @@ class WebODMClientUI:
         button_frame = ttk.Frame(details_dialog)
         button_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        ttk.Button(button_frame, text="关闭", command=details_dialog.destroy).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text=t("close"), command=details_dialog.destroy).pack(side=tk.RIGHT)
         
         # 如果任务已完成，添加下载按钮
         if task.get('status') == 40 and task.get('available_assets'):
             ttk.Button(
                 button_frame,
-                text="下载资源",
+                text=t("download_assets"),
                 command=lambda: self.download_assets(task['id'])
             ).pack(side=tk.RIGHT, padx=5)
     
@@ -909,16 +948,16 @@ class WebODMClientUI:
             无
         """
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
         # 创建任务对话框
         task_dialog = tk.Toplevel(self.root)
-        task_dialog.title("新建任务")
+        task_dialog.title(t("new_task_title"))
         task_dialog.geometry("600x750")
         task_dialog.transient(self.root)
         
@@ -932,12 +971,12 @@ class WebODMClientUI:
         except Exception:
             pass
         
-        ttk.Label(main_frame, text="任务名称:").grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(main_frame, text=t("task_name")).grid(row=0, column=0, sticky=tk.W, padx=5, pady=5)
         task_name_var = tk.StringVar(value="")
         ttk.Entry(main_frame, textvariable=task_name_var, width=30).grid(row=0, column=1, sticky=tk.W, padx=5, pady=5)
         
         # 图片选择
-        ttk.Label(main_frame, text="选择图片:").grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
+        ttk.Label(main_frame, text=t("select_images")).grid(row=1, column=0, sticky=tk.W, padx=5, pady=5)
         
         images_frame = ttk.Frame(main_frame)
         images_frame.grid(row=2, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
@@ -959,13 +998,13 @@ class WebODMClientUI:
         
         def add_images():
             filetypes = [
-                ("图片文件", "*.jpg *.jpeg *.png *.tif *.tiff"),
-                ("JPEG文件", "*.jpg *.jpeg"),
-                ("PNG文件", "*.png"),
-                ("TIFF文件", "*.tif *.tiff"),
-                ("所有文件", "*.*")
+                (t("filetype_images"), "*.jpg *.jpeg *.png *.tif *.tiff"),
+                (t("filetype_jpeg"), "*.jpg *.jpeg"),
+                (t("filetype_png"), "*.png"),
+                (t("filetype_tiff"), "*.tif *.tiff"),
+                (t("filetype_all"), "*.*")
             ]
-            filenames = filedialog.askopenfilenames(title="选择图片", filetypes=filetypes)
+            filenames = filedialog.askopenfilenames(title=t("select_images_title"), filetypes=filetypes)
             if not filenames:
                 return
             for filename in filenames:
@@ -990,28 +1029,28 @@ class WebODMClientUI:
         def clear_images():
             image_paths.clear()
             images_listbox.delete(0, tk.END)
-        ttk.Button(buttons_frame, text="添加图片", command=add_images).pack(side=tk.LEFT, padx=2)
-        ttk.Button(buttons_frame, text="移除选中", command=remove_selected_images).pack(side=tk.LEFT, padx=2)
-        ttk.Button(buttons_frame, text="清空列表", command=clear_images).pack(side=tk.LEFT, padx=2)
+        ttk.Button(buttons_frame, text=t("add_images"), command=add_images).pack(side=tk.LEFT, padx=2)
+        ttk.Button(buttons_frame, text=t("remove_selected"), command=remove_selected_images).pack(side=tk.LEFT, padx=2)
+        ttk.Button(buttons_frame, text=t("clear_list"), command=clear_images).pack(side=tk.LEFT, padx=2)
         
         # 预设选择
-        ttk.Label(main_frame, text="选择预设:", font=("TkDefaultFont", 10, "bold")).grid(row=4, column=0, sticky=tk.W, padx=5, pady=10)
+        ttk.Label(main_frame, text=t("select_preset"), font=("TkDefaultFont", 10, "bold")).grid(row=4, column=0, sticky=tk.W, padx=5, pady=10)
 
         preset_frame = ttk.Frame(main_frame)
         preset_frame.grid(row=5, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
 
         presets = self.api.get_presets()
-        preset_name_map = {p.get('name', f"预设_{p.get('id')}"): p for p in presets} if presets else {}
+        preset_name_map = {p.get('name', f"preset_{p.get('id')}"): p for p in presets} if presets else {}
         preset_names = list(preset_name_map.keys())
         default_preset_name = next((name for name in preset_names if name.lower() == 'default'), preset_names[0] if preset_names else '')
 
         selected_preset_var = tk.StringVar(value=default_preset_name)
-        ttk.Label(preset_frame, text="预设:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(preset_frame, text=t("preset")).pack(side=tk.LEFT, padx=(0, 5))
         preset_select = ttk.Combobox(preset_frame, textvariable=selected_preset_var, values=preset_names, state="readonly", width=30)
         preset_select.pack(side=tk.LEFT)
 
         # 预设详情显示
-        details_container = ttk.LabelFrame(main_frame, text="预设选项 (只读)")
+        details_container = ttk.LabelFrame(main_frame, text=t("preset_options_readonly"))
         details_container.grid(row=6, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
         details_text = tk.Text(details_container, height=10, width=60)
         details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1031,9 +1070,9 @@ class WebODMClientUI:
         preset_select.bind("<<ComboboxSelected>>", lambda e: render_preset_details())
         render_preset_details()
         
-        progress_group = ttk.LabelFrame(main_frame, text="上传进度")
+        progress_group = ttk.LabelFrame(main_frame, text=t("upload_progress"))
         progress_group.grid(row=7, column=0, columnspan=2, sticky=tk.NSEW, padx=5, pady=5)
-        upload_status_var = tk.StringVar(value="等待开始...")
+        upload_status_var = tk.StringVar(value=t("waiting_to_start"))
         ttk.Label(progress_group, textvariable=upload_status_var).pack(pady=(8, 6), padx=10, anchor=tk.W)
         upload_progress_var = tk.DoubleVar(value=0)
         upload_progress = ttk.Progressbar(progress_group, orient="horizontal", length=320, mode="determinate", maximum=1, variable=upload_progress_var)
@@ -1046,13 +1085,13 @@ class WebODMClientUI:
         
         def do_create():
             if not image_paths:
-                messagebox.showerror("错误", "请至少添加一张图片")
+                messagebox.showerror(t("error"), t("error_no_images"))
                 return
             
             selected_name = selected_preset_var.get()
             preset = preset_name_map.get(selected_name)
             if not preset:
-                messagebox.showerror("错误", "请选择有效的预设")
+                messagebox.showerror(t("error"), t("error_invalid_preset"))
                 return
             options = {}
             for opt in preset.get('options', []):
@@ -1061,12 +1100,12 @@ class WebODMClientUI:
                     continue
                 options[oname] = opt.get('value')
             
-            self.status_var.set("正在创建任务...")
+            self.status_var.set(t("creating_task"))
             total_images = max(len(image_paths), 1)
             upload_progress.config(maximum=total_images)
             upload_progress_var.set(0)
             upload_count_var.set(f"0/{len(image_paths)}")
-            upload_status_var.set("正在准备上传...")
+            upload_status_var.set(t("preparing_upload"))
             
             def update_upload_progress(completed: int, total: int, message: str):
                 def _update():
@@ -1092,36 +1131,36 @@ class WebODMClientUI:
                         progress_callback=update_upload_progress
                     )
                 except Exception as exc:
-                    print(f"创建任务过程中发生错误: {exc}")
+                    print(f"Error creating task: {exc}")
                     task = None
                 finally:
                     def finish():
                         if task:
-                            self.status_var.set("任务创建成功")
+                            self.status_var.set(t("task_created"))
                             self.load_tasks()
-                            upload_status_var.set("上传完成，已提交任务")
+                            upload_status_var.set(t("upload_complete_submitting"))
                         else:
-                            self.status_var.set("任务创建失败")
-                            messagebox.showerror("创建失败", "无法创建任务，请检查图片文件和网络连接")
+                            self.status_var.set(t("task_create_failed"))
+                            messagebox.showerror(t("task_create_failed"), t("task_create_failed_msg"))
                     self.root.after(0, finish)
             
             threading.Thread(target=create_thread).start()
         
-        ttk.Button(button_frame, text="取消", command=task_dialog.destroy).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="创建任务", command=do_create).pack(side=tk.RIGHT)
-        ttk.Button(button_frame, text="最小化", command=task_dialog.iconify).pack(side=tk.LEFT)
+        ttk.Button(button_frame, text=t("cancel"), command=task_dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text=t("create_task"), command=do_create).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text=t("minimize"), command=task_dialog.iconify).pack(side=tk.LEFT)
     
     def add_images(self):
         """添加图片"""
         filetypes = [
-            ("图片文件", "*.jpg *.jpeg *.png *.tif *.tiff"),
-            ("JPEG文件", "*.jpg *.jpeg"),
-            ("PNG文件", "*.png"),
-            ("TIFF文件", "*.tif *.tiff"),
-            ("所有文件", "*.*")
+            (t("filetype_images"), "*.jpg *.jpeg *.png *.tif *.tiff"),
+            (t("filetype_jpeg"), "*.jpg *.jpeg"),
+            (t("filetype_png"), "*.png"),
+            (t("filetype_tiff"), "*.tif *.tiff"),
+            (t("filetype_all"), "*.*")
         ]
         
-        filenames = filedialog.askopenfilenames(title="选择图片", filetypes=filetypes)
+        filenames = filedialog.askopenfilenames(title=t("select_images_title"), filetypes=filetypes)
         if not filenames:
             return
         
@@ -1166,30 +1205,30 @@ class WebODMClientUI:
         task_dialog.config(cursor="")
         
         if task:
-            self.status_var.set("任务创建成功")
+            self.status_var.set(t("task_created"))
             task_dialog.destroy()
             
             # 重新加载任务列表
             self.load_tasks()
         else:
-            self.status_var.set("任务创建失败")
-            messagebox.showerror("创建失败", "无法创建任务，请检查图片文件和网络连接")
+            self.status_var.set(t("task_create_failed"))
+            messagebox.showerror(t("task_create_failed"), t("task_create_failed_msg"))
     
     def download_assets(self, task_ids: Optional[Union[int, str, List[Union[int, str]]]] = None):
         """下载任务资源，支持单个任务或批量任务"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
         # 统一构建任务ID列表
         if task_ids is None:
             selection = self.tasks_treeview.selection()
             if not selection:
-                messagebox.showerror("错误", "请先选择至少一个任务")
+                messagebox.showerror(t("error"), t("error_no_task_selected"))
                 return
             collected_ids = [str(self.tasks_treeview.item(item, "values")[0]) for item in selection]
         else:
@@ -1207,7 +1246,7 @@ class WebODMClientUI:
                 seen_ids.add(task_id)
         
         if not normalized_ids:
-            messagebox.showerror("错误", "请先选择至少一个任务")
+            messagebox.showerror(t("error"), t("error_no_task_selected"))
             return
         
         task_info_cache: Dict[str, Dict[str, Any]] = {}
@@ -1218,15 +1257,16 @@ class WebODMClientUI:
             single_task_id = normalized_ids[0]
             task_info = self.api.get_task(self.current_project_id, single_task_id)
             if not task_info:
-                messagebox.showerror("错误", f"无法获取任务 {single_task_id} 的信息")
+                messagebox.showerror(t("error"), t("error_no_task_info", task_id=single_task_id))
                 return
             available_assets = task_info.get('available_assets', [])
             if not available_assets:
-                messagebox.showerror("错误", f"任务 {task_info.get('name', f'任务_{single_task_id}')} 没有可用的资源")
+                task_name = task_info.get('name', f'task_{single_task_id}')
+                messagebox.showerror(t("error"), t("error_no_assets", task_name=task_name))
                 return
             asset_choices = available_assets
             default_selected = set(asset_choices)
-            dialog_title = f"选择要下载的资源 - {task_info.get('name', '未命名')}"
+            dialog_title = f"{t('select_assets_to_download')} - {task_info.get('name', t('unnamed'))}"
             task_info_cache[single_task_id] = task_info
         else:
             asset_choices = [
@@ -1240,16 +1280,16 @@ class WebODMClientUI:
                 "report.pdf"
             ]
             default_selected = {"orthophoto.tif", "dsm.tif"}
-            dialog_title = "选择要下载的资源"
+            dialog_title = t("select_assets_to_download")
         
         # 选择下载目录
-        download_dir = filedialog.askdirectory(title="选择下载目录")
+        download_dir = filedialog.askdirectory(title=t("select_download_dir"))
         if not download_dir:
             return
         
         download_dir = download_dir.strip()
         if not download_dir:
-            messagebox.showerror("错误", "请选择有效的下载目录")
+            messagebox.showerror(t("error"), t("error_invalid_download_dir"))
             return
         base_download_dir = os.path.normpath(download_dir)
         
@@ -1260,7 +1300,7 @@ class WebODMClientUI:
         asset_dialog.transient(self.root)
         asset_dialog.grab_set()
         
-        ttk.Label(asset_dialog, text="选择要下载的资源类型:").pack(pady=(10, 5))
+        ttk.Label(asset_dialog, text=t("select_asset_types")).pack(pady=(10, 5))
         
         asset_vars: Dict[str, tk.BooleanVar] = {}
         for asset in asset_choices:
@@ -1271,16 +1311,16 @@ class WebODMClientUI:
         def do_download():
             selected_assets = [asset for asset, var in asset_vars.items() if var.get()]
             if not selected_assets:
-                messagebox.showerror("错误", "请至少选择一种资源类型")
+                messagebox.showerror(t("error"), t("error_no_task_selected"))
                 return
             
             asset_dialog.destroy()
             
-            self.status_var.set("正在准备下载...")
+            self.status_var.set(t("preparing_download"))
             self.root.config(cursor="wait")
             
             progress_dialog = tk.Toplevel(self.root)
-            progress_dialog.title("下载进度")
+            progress_dialog.title(t("download_progress"))
             progress_dialog.geometry("400x300")
             progress_dialog.transient(self.root)
             
@@ -1294,7 +1334,7 @@ class WebODMClientUI:
             scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
             progress_text.config(yscrollcommand=scrollbar.set)
             
-            close_button = ttk.Button(progress_dialog, text="关闭", state=tk.DISABLED)
+            close_button = ttk.Button(progress_dialog, text=t("close"), state=tk.DISABLED)
             close_button.pack(pady=10)
             
             def update_progress(text: str):
@@ -1302,7 +1342,7 @@ class WebODMClientUI:
                 self.root.after(0, lambda: progress_text.see(tk.END))
             
             def update_progress_title(completed: int, total: int):
-                self.root.after(0, lambda: progress_dialog.title(f"下载进度 ({completed}/{total})"))
+                self.root.after(0, lambda: progress_dialog.title(f"{t('download_progress')} ({completed}/{total})"))
             
             def download_thread():
                 total_downloads = len(normalized_ids) * len(selected_assets)
@@ -1318,10 +1358,10 @@ class WebODMClientUI:
                             task_info_cache[task_id] = task_info
                     
                     if not task_info:
-                        update_progress(f"无法获取任务 {task_id} 的信息\n")
+                        update_progress(f"{t('error_no_task_info', task_id=task_id)}\n")
                         continue
                     
-                    task_name = task_info.get('name', f"任务_{task_id}")
+                    task_name = task_info.get('name', f"task_{task_id}")
                     available_assets = task_info.get('available_assets', [])
                     
                     safe_task_dir = os.path.join(
@@ -1332,7 +1372,7 @@ class WebODMClientUI:
                     try:
                         os.makedirs(safe_task_dir, exist_ok=True)
                     except OSError as exc:
-                        update_progress(f"无法创建目录 {safe_task_dir}: {exc}\n")
+                        update_progress(f"{t('error_create_dir', dir=safe_task_dir, error=str(exc))}\n")
                         failed_downloads += len(selected_assets)
                         completed_downloads += len(selected_assets)
                         update_progress_title(completed_downloads, total_downloads)
@@ -1340,35 +1380,35 @@ class WebODMClientUI:
                     
                     for asset in selected_assets:
                         if asset not in available_assets:
-                            update_progress(f"任务 {task_id} ({task_name}) 没有资源: {asset}\n")
+                            update_progress(f"{t('task_no_asset', task_id=task_id, task_name=task_name, asset=asset)}\n")
                             failed_downloads += 1
                             completed_downloads += 1
                             update_progress_title(completed_downloads, total_downloads)
                             continue
                         
-                        update_progress(f"正在下载任务 {task_id} ({task_name}) 的资源: {asset}\n")
+                        update_progress(f"{t('downloading_asset', task_id=task_id, task_name=task_name, asset=asset)}\n")
                         
                         safe_asset_name = self._sanitize_filename(asset)
                         output_path = os.path.join(safe_task_dir, safe_asset_name)
                         success = self.api.download_asset(self.current_project_id, task_id, asset, output_path)
                         
                         if success:
-                            update_progress(f"成功下载: {output_path}\n")
+                            update_progress(f"{t('download_success', path=output_path)}\n")
                         else:
-                            update_progress(f"下载失败: {asset}\n")
+                            update_progress(f"{t('download_failed', asset=asset)}\n")
                             failed_downloads += 1
                         
                         completed_downloads += 1
                         update_progress_title(completed_downloads, total_downloads)
                 
-                update_progress(f"\n下载完成! 总计: {total_downloads}, 成功: {total_downloads - failed_downloads}, 失败: {failed_downloads}\n")
+                update_progress(f"\n{t('download_complete', total=total_downloads, success=total_downloads - failed_downloads, failed=failed_downloads)}\n")
                 self.root.after(0, lambda: self.root.config(cursor=""))
-                self.root.after(0, lambda: self.status_var.set("下载完成"))
+                self.root.after(0, lambda: self.status_var.set(t("download_complete_status")))
                 self.root.after(0, lambda: close_button.config(state=tk.NORMAL, command=progress_dialog.destroy))
             
             threading.Thread(target=download_thread).start()
         
-        ttk.Button(asset_dialog, text="下载", command=do_download).pack(pady=10)
+        ttk.Button(asset_dialog, text=t("download"), command=do_download).pack(pady=10)
     
     def _sanitize_filename(self, name: str) -> str:
         """清理Windows路径非法字符，保证生成的文件名安全"""
@@ -1387,7 +1427,7 @@ class WebODMClientUI:
             return True
         if value_str in {"0", "false", "no", "off", ""}:
             return False
-        raise ValueError("布尔值格式无效")
+        raise ValueError("Invalid boolean format")
 
     def _clean_option_values(self, options: Dict[str, Any]) -> Dict[str, Any]:
         """移除空字符串和None值，避免发送无效的处理选项"""
@@ -1409,17 +1449,17 @@ class WebODMClientUI:
     def restart_tasks(self):
         """重启选中的任务"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
         # 获取选中的任务
         selection = self.tasks_treeview.selection()
         if not selection:
-            messagebox.showerror("错误", "请先选择至少一个任务")
+            messagebox.showerror(t("error"), t("error_no_task_selected"))
             return
         
         # 获取任务ID列表
@@ -1434,16 +1474,16 @@ class WebODMClientUI:
             return
         
         # 获取预设
-        self.status_var.set("正在获取预设...")
+        self.status_var.set(t("getting_presets"))
         presets = self.api.get_presets()
         if not presets:
-            messagebox.showerror("错误", "无法获取预设配置")
-            self.status_var.set("就绪")
+            messagebox.showerror(t("error"), t("get_presets_failed"))
+            self.status_var.set(t("ready"))
             return
 
         # 创建重启选项对话框（预设选择）
         restart_dialog = tk.Toplevel(self.root)
-        restart_dialog.title("批量重启任务")
+        restart_dialog.title(t("batch_restart_title"))
         restart_dialog.geometry("500x400")
         restart_dialog.transient(self.root)
         restart_dialog.grab_set()
@@ -1451,20 +1491,20 @@ class WebODMClientUI:
         main_frame = ttk.Frame(restart_dialog)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        ttk.Label(main_frame, text=f"将重启 {len(task_ids)} 个任务，请选择预设:", font=("TkDefaultFont", 10, "bold")).pack(pady=(0, 10), anchor=tk.W)
+        ttk.Label(main_frame, text=t("will_restart_tasks", count=len(task_ids)), font=("TkDefaultFont", 10, "bold")).pack(pady=(0, 10), anchor=tk.W)
 
-        preset_name_map = {p.get('name', f"预设_{p.get('id')}"): p for p in presets}
+        preset_name_map = {p.get('name', f"preset_{p.get('id')}"): p for p in presets}
         preset_names = list(preset_name_map.keys())
         default_preset_name = next((name for name in preset_names if name.lower() == 'default'), preset_names[0])
 
         selected_preset_var = tk.StringVar(value=default_preset_name)
         selector_frame = ttk.Frame(main_frame)
         selector_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(selector_frame, text="预设:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(selector_frame, text=t("preset")).pack(side=tk.LEFT, padx=(0, 5))
         preset_select = ttk.Combobox(selector_frame, textvariable=selected_preset_var, values=preset_names, state="readonly", width=30)
         preset_select.pack(side=tk.LEFT)
 
-        details_group = ttk.LabelFrame(main_frame, text="预设选项 (只读)")
+        details_group = ttk.LabelFrame(main_frame, text=t("preset_options_readonly"))
         details_group.pack(fill=tk.BOTH, expand=True, pady=10)
         details_text = tk.Text(details_group, height=10, width=60)
         details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1487,7 +1527,7 @@ class WebODMClientUI:
         def do_restart():
             preset = preset_name_map.get(selected_preset_var.get())
             if not preset:
-                messagebox.showerror("错误", "请选择有效的预设")
+                messagebox.showerror(t("error"), t("error_invalid_preset"))
                 return
             options = {}
             for opt in preset.get('options', []):
@@ -1498,8 +1538,8 @@ class WebODMClientUI:
             restart_dialog.destroy()
             self.start_restart_tasks(task_ids, options)
 
-        ttk.Button(button_frame, text="取消", command=restart_dialog.destroy).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="重启任务", command=do_restart).pack(side=tk.RIGHT)
+        ttk.Button(button_frame, text=t("cancel"), command=restart_dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text=t("restart_tasks"), command=do_restart).pack(side=tk.RIGHT)
     
     def start_restart_tasks(self, task_ids: List[Union[int, str]], options: Optional[Dict[str, Any]]):
         """开始重启任务
@@ -1508,12 +1548,12 @@ class WebODMClientUI:
             task_ids: 任务ID列表
             options: 处理选项字典
         """
-        self.status_var.set("正在重启任务...")
+        self.status_var.set(t("restarting_tasks"))
         self.root.config(cursor="wait")
         
         # 创建进度对话框
         progress_dialog = tk.Toplevel(self.root)
-        progress_dialog.title("重启进度")
+        progress_dialog.title(t("restart_progress"))
         progress_dialog.geometry("400x300")
         progress_dialog.transient(self.root)
         
@@ -1529,7 +1569,7 @@ class WebODMClientUI:
         progress_text.config(yscrollcommand=scrollbar.set)
         
         # 添加关闭按钮
-        close_button = ttk.Button(progress_dialog, text="关闭", state=tk.DISABLED)
+        close_button = ttk.Button(progress_dialog, text=t("close"), state=tk.DISABLED)
         close_button.pack(pady=10)
         
         # 重启线程
@@ -1542,32 +1582,32 @@ class WebODMClientUI:
                 # 获取任务信息
                 task_info = self.api.get_task(self.current_project_id, task_id)
                 if not task_info:
-                    update_progress(f"无法获取任务 {task_id} 的信息\n")
+                    update_progress(f"{t('error_no_task_info', task_id=task_id)}\n")
                     failed_tasks += 1
                     completed_tasks += 1
                     update_progress_title(completed_tasks, total_tasks)
                     continue
                 
-                task_name = task_info.get('name', f"任务_{task_id}")
+                task_name = task_info.get('name', f"task_{task_id}")
                 
-                update_progress(f"正在重启任务 {task_id} ({task_name})...\n")
+                update_progress(f"{t('restarting_task', task_id=task_id, task_name=task_name)}\n")
                 
                 restart_options = options or {}
                 success = self.api.restart_task(self.current_project_id, task_id, restart_options)
                 
                 if success:
-                    update_progress(f"成功重启任务 {task_id} ({task_name})\n")
+                    update_progress(f"{t('restart_success', task_id=task_id, task_name=task_name)}\n")
                 else:
-                    update_progress(f"重启任务 {task_id} ({task_name}) 失败\n")
+                    update_progress(f"{t('restart_failed', task_id=task_id, task_name=task_name)}\n")
                     failed_tasks += 1
                 
                 completed_tasks += 1
                 update_progress_title(completed_tasks, total_tasks)
             
             # 完成重启
-            update_progress(f"\n重启完成! 总计: {total_tasks}, 成功: {total_tasks - failed_tasks}, 失败: {failed_tasks}\n")
+            update_progress(f"\n{t('restart_complete', total=total_tasks, success=total_tasks - failed_tasks, failed=failed_tasks)}\n")
             self.root.after(0, lambda: self.root.config(cursor=""))
-            self.root.after(0, lambda: self.status_var.set("重启完成"))
+            self.root.after(0, lambda: self.status_var.set(t("restart_complete_status")))
             self.root.after(0, lambda: close_button.config(state=tk.NORMAL, command=progress_dialog.destroy))
             
             # 重新加载任务列表
@@ -1580,7 +1620,7 @@ class WebODMClientUI:
         
         # 更新进度对话框标题
         def update_progress_title(completed, total):
-            self.root.after(0, lambda: progress_dialog.title(f"重启进度 ({completed}/{total})"))
+            self.root.after(0, lambda: progress_dialog.title(f"{t('restart_progress')} ({completed}/{total})"))
         
         # 启动重启线程
         threading.Thread(target=restart_thread).start()
@@ -1588,41 +1628,42 @@ class WebODMClientUI:
     def cancel_tasks(self):
         """取消选中的任务"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
         # 获取选中的任务
         selection = self.tasks_treeview.selection()
         if not selection:
-            messagebox.showerror("错误", "请先选择至少一个任务")
+            messagebox.showerror(t("error"), t("error_no_task_selected"))
             return
         
         # 获取任务ID列表和检查是否有已完成的任务
         task_ids = []
         completed_tasks = []
+        status_completed = t("status_completed")
         
         for item in selection:
             values = self.tasks_treeview.item(item, "values")
             task_id = values[0]
             task_status = values[3]  # 状态在第4列
             
-            if task_status == "已完成":  # 状态40对应"已完成"
+            if task_status == status_completed:  # 状态40对应"已完成"
                 completed_tasks.append(task_id)
             else:
                 task_ids.append(task_id)
         
         # 如果所有选中的任务都已完成，显示错误消息
         if not task_ids and completed_tasks:
-            messagebox.showerror("错误", "已完成的任务不可取消")
+            messagebox.showerror(t("error"), t("error_completed_tasks"))
             return
         
         # 如果有部分任务已完成，提示用户
         if completed_tasks:
-            if not messagebox.askyesno("警告", f"选中的任务中有 {len(completed_tasks)} 个已完成的任务不可取消，是否继续取消其他 {len(task_ids)} 个任务?"):
+            if not messagebox.askyesno(t("warning"), t("warning_completed_tasks", completed=len(completed_tasks), remaining=len(task_ids))):
                 return
         
         # 如果没有可取消的任务，直接返回
@@ -1630,10 +1671,10 @@ class WebODMClientUI:
             return
         
         # 确认取消
-        if not messagebox.askyesno("确认", f"确定要取消选中的 {len(task_ids)} 个任务吗?"):
+        if not messagebox.askyesno(t("confirm"), t("confirm_cancel", count=len(task_ids))):
             return
         
-        self.status_var.set("正在取消任务...")
+        self.status_var.set(t("canceling_tasks"))
         self.root.config(cursor="wait")
         
         # 取消任务线程
@@ -1646,28 +1687,28 @@ class WebODMClientUI:
                 # 获取任务信息
                 task_info = self.api.get_task(self.current_project_id, task_id)
                 if not task_info:
-                    print(f"无法获取任务 {task_id} 的信息")
+                    print(f"Unable to get task {task_id} info")
                     failed_tasks += 1
                     completed_tasks += 1
                     continue
                 
-                task_name = task_info.get('name', f"任务_{task_id}")
+                task_name = task_info.get('name', f"task_{task_id}")
                 
-                print(f"正在取消任务 {task_id} ({task_name})...")
+                print(f"Canceling task {task_id} ({task_name})...")
                 
                 success = self.api.cancel_task(self.current_project_id, task_id)
                 
                 if success:
-                    print(f"成功取消任务 {task_id} ({task_name})")
+                    print(f"Successfully canceled task {task_id} ({task_name})")
                 else:
-                    print(f"取消任务 {task_id} ({task_name}) 失败")
+                    print(f"Failed to cancel task {task_id} ({task_name})")
                     failed_tasks += 1
                 
                 completed_tasks += 1
             
             # 完成取消
             self.root.after(0, lambda: self.root.config(cursor=""))
-            self.root.after(0, lambda: self.status_var.set(f"取消完成! 总计: {total_tasks}, 成功: {total_tasks - failed_tasks}, 失败: {failed_tasks}"))
+            self.root.after(0, lambda: self.status_var.set(t("cancel_complete", total=total_tasks, success=total_tasks - failed_tasks, failed=failed_tasks)))
             
             # 重新加载任务列表
             self.root.after(1000, self.load_tasks)
@@ -1678,17 +1719,17 @@ class WebODMClientUI:
     def remove_tasks(self):
         """删除选中的任务"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
         
         if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
         # 获取选中的任务
         selection = self.tasks_treeview.selection()
         if not selection:
-            messagebox.showerror("错误", "请先选择至少一个任务")
+            messagebox.showerror(t("error"), t("error_no_task_selected"))
             return
         
         # 获取任务ID列表
@@ -1698,10 +1739,10 @@ class WebODMClientUI:
             task_ids.append(task_id)
         
         # 确认删除
-        if not messagebox.askyesno("确认", f"确定要删除选中的 {len(task_ids)} 个任务吗? 此操作不可恢复!", icon=messagebox.WARNING):
+        if not messagebox.askyesno(t("confirm"), t("confirm_delete", count=len(task_ids)), icon=messagebox.WARNING):
             return
         
-        self.status_var.set("正在删除任务...")
+        self.status_var.set(t("deleting_tasks"))
         self.root.config(cursor="wait")
         
         # 删除任务线程
@@ -1714,28 +1755,28 @@ class WebODMClientUI:
                 # 获取任务信息
                 task_info = self.api.get_task(self.current_project_id, task_id)
                 if not task_info:
-                    print(f"无法获取任务 {task_id} 的信息")
+                    print(f"Unable to get task {task_id} info")
                     failed_tasks += 1
                     completed_tasks += 1
                     continue
                 
-                task_name = task_info.get('name', f"任务_{task_id}")
+                task_name = task_info.get('name', f"task_{task_id}")
                 
-                print(f"正在删除任务 {task_id} ({task_name})...")
+                print(f"Deleting task {task_id} ({task_name})...")
                 
                 success = self.api.remove_task(self.current_project_id, task_id)
                 
                 if success:
-                    print(f"成功删除任务 {task_id} ({task_name})")
+                    print(f"Successfully deleted task {task_id} ({task_name})")
                 else:
-                    print(f"删除任务 {task_id} ({task_name}) 失败")
+                    print(f"Failed to delete task {task_id} ({task_name})")
                     failed_tasks += 1
                 
                 completed_tasks += 1
             
             # 完成删除
             self.root.after(0, lambda: self.root.config(cursor=""))
-            self.root.after(0, lambda: self.status_var.set(f"删除完成! 总计: {total_tasks}, 成功: {total_tasks - failed_tasks}, 失败: {failed_tasks}"))
+            self.root.after(0, lambda: self.status_var.set(t("delete_complete", total=total_tasks, success=total_tasks - failed_tasks, failed=failed_tasks)))
             
             # 重新加载任务列表
             self.root.after(1000, self.load_tasks)
@@ -1747,33 +1788,33 @@ class WebODMClientUI:
     def restart_task(self, task_id):
         """重启任务并允许修改处理选项"""
         if not self.api.token:
-            messagebox.showerror("错误", "请先登录")
+            messagebox.showerror(t("error"), t("error_not_logged_in"))
             return
             
         if not self.current_project_id:
-            messagebox.showerror("错误", "请先选择一个项目")
+            messagebox.showerror(t("error"), t("error_no_project_selected"))
             return
         
         # 获取任务信息
         task_info = self.api.get_task(self.current_project_id, task_id)
         if not task_info:
-            messagebox.showerror("错误", f"无法获取任务 {task_id} 的信息")
+            messagebox.showerror(t("error"), t("error_no_task_info", task_id=task_id))
             return
         
-        task_name = task_info.get('name', f"任务_{task_id}")
+        task_name = task_info.get('name', f"task_{task_id}")
         current_options = task_info.get('options', [])
         
         # 获取预设
-        self.status_var.set("正在获取预设...")
+        self.status_var.set(t("getting_presets"))
         presets = self.api.get_presets()
         if not presets:
-            messagebox.showerror("错误", "无法获取预设配置")
-            self.status_var.set("就绪")
+            messagebox.showerror(t("error"), t("get_presets_failed"))
+            self.status_var.set(t("ready"))
             return
 
         # 创建重启任务对话框（预设选择）
         restart_dialog = tk.Toplevel(self.root)
-        restart_dialog.title(f"重启任务 - {task_name} (ID: {task_id})")
+        restart_dialog.title(f"{t('restart_task_title')} - {task_name} (ID: {task_id})")
         restart_dialog.geometry("500x400")
         restart_dialog.transient(self.root)
         restart_dialog.grab_set()
@@ -1781,20 +1822,20 @@ class WebODMClientUI:
         main_frame = ttk.Frame(restart_dialog)
         main_frame.pack(fill=tk.BOTH, expand=True, padx=10, pady=10)
 
-        ttk.Label(main_frame, text="请选择预设:", font=("TkDefaultFont", 10, "bold")).pack(pady=(0, 10), anchor=tk.W)
+        ttk.Label(main_frame, text=t("select_preset"), font=("TkDefaultFont", 10, "bold")).pack(pady=(0, 10), anchor=tk.W)
 
-        preset_name_map = {p.get('name', f"预设_{p.get('id')}"): p for p in presets}
+        preset_name_map = {p.get('name', f"preset_{p.get('id')}"): p for p in presets}
         preset_names = list(preset_name_map.keys())
         default_preset_name = next((name for name in preset_names if name.lower() == 'default'), preset_names[0])
 
         selected_preset_var = tk.StringVar(value=default_preset_name)
         selector_frame = ttk.Frame(main_frame)
         selector_frame.pack(fill=tk.X, pady=5)
-        ttk.Label(selector_frame, text="预设:").pack(side=tk.LEFT, padx=(0, 5))
+        ttk.Label(selector_frame, text=t("preset")).pack(side=tk.LEFT, padx=(0, 5))
         preset_select = ttk.Combobox(selector_frame, textvariable=selected_preset_var, values=preset_names, state="readonly", width=30)
         preset_select.pack(side=tk.LEFT)
 
-        details_group = ttk.LabelFrame(main_frame, text="预设选项 (只读)")
+        details_group = ttk.LabelFrame(main_frame, text=t("preset_options_readonly"))
         details_group.pack(fill=tk.BOTH, expand=True, pady=10)
         details_text = tk.Text(details_group, height=10, width=60)
         details_text.pack(fill=tk.BOTH, expand=True, padx=5, pady=5)
@@ -1817,7 +1858,7 @@ class WebODMClientUI:
         def do_restart():
             preset = preset_name_map.get(selected_preset_var.get())
             if not preset:
-                messagebox.showerror("错误", "请选择有效的预设")
+                messagebox.showerror(t("error"), t("error_invalid_preset"))
                 return
             options = {}
             for opt in preset.get('options', []):
@@ -1827,20 +1868,20 @@ class WebODMClientUI:
                 options[name] = opt.get('value')
             restart_dialog.destroy()
 
-            self.status_var.set(f"正在重启任务 {task_id}...")
+            self.status_var.set(t("restarting_task", task_id=task_id, task_name=task_name))
             self.root.config(cursor="wait")
 
             def restart_thread():
                 success = self.api.restart_task(self.current_project_id, task_id, options)
                 if success:
-                    self.root.after(0, lambda: self.status_var.set(f"任务 {task_id} 重启成功"))
+                    self.root.after(0, lambda: self.status_var.set(t("restart_success", task_id=task_id, task_name=task_name)))
                     self.root.after(0, lambda: self.load_tasks())
                 else:
-                    self.root.after(0, lambda: self.status_var.set(f"任务 {task_id} 重启失败"))
-                    self.root.after(0, lambda: messagebox.showerror("错误", f"重启任务 {task_id} 失败"))
+                    self.root.after(0, lambda: self.status_var.set(t("restart_failed", task_id=task_id, task_name=task_name)))
+                    self.root.after(0, lambda: messagebox.showerror(t("error"), t("restart_failed", task_id=task_id, task_name=task_name)))
                 self.root.after(0, lambda: self.root.config(cursor=""))
 
             threading.Thread(target=restart_thread).start()
 
-        ttk.Button(button_frame, text="重启", command=do_restart).pack(side=tk.RIGHT, padx=5)
-        ttk.Button(button_frame, text="取消", command=restart_dialog.destroy).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text=t("restart"), command=do_restart).pack(side=tk.RIGHT, padx=5)
+        ttk.Button(button_frame, text=t("cancel"), command=restart_dialog.destroy).pack(side=tk.RIGHT, padx=5)
